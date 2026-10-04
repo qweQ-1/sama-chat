@@ -1,0 +1,25 @@
+# fly.io config — deploy with: fly launch --copy-config && fly volumes create sama_data --size 1 && fly deploy
+app = "sama-chat"
+primary_region = "hkg"
+
+[build]
+
+[env]
+  PORT = "8080"
+  DATA_DIR = "/app/data"
+  UPLOAD_DIR = "/app/data/uploads"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[mounts]]
+  source = "sama_data"
+  destination = "/app/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

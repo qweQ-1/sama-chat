@@ -1,0 +1,91 @@
+name: CI — Build APK & IPA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  android:
+    name: Test + Build APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Generate platform folders (android/, ios/) from the Flutter templates.
+      - name: Generate platform scaffolding
+        run: cd app && flutter create --platforms=android,ios --org com.qweq1 --project-name samachat .
+
+      - name: Prepare Android project
+        run: bash ci/android-prepare.sh
+
+      - name: Get dependencies
+        run: cd app && flutter pub get
+
+      - name: Analyze (non-blocking)
+        run: cd app && flutter analyze || true
+
+      - name: Run tests
+        run: cd app && flutter test
+
+      - name: Build release APK
+        run: |
+          cd app
+          SERVER="${{ vars.SAMA_SERVER }}"
+          SERVER="${SERVER:-http://127.0.0.1:8080}"
+          flutter build apk --release --dart-define=SAMA_SERVER=$SERVER
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sama-chat-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+  ios:
+    name: Build unsigned IPA
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate platform scaffolding
+        run: cd app && flutter create --platforms=android,ios --org com.qweq1 --project-name samachat .
+
+      - name: Prepare iOS project
+        run: bash ci/ios-prepare.sh
+
+      - name: Get dependencies
+        run: cd app && flutter pub get
+
+      - name: Build iOS (no codesign)
+        run: |
+          cd app
+          SERVER="${{ vars.SAMA_SERVER }}"
+          SERVER="${SERVER:-http://127.0.0.1:8080}"
+          flutter build ios --release --no-codesign --dart-define=SAMA_SERVER=$SERVER
+
+      - name: Package IPA
+        run: bash ci/package-ipa.sh
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: sama-chat-ipa
+          path: app/dist/*.ipa
+          if-no-files-found: error

@@ -1,0 +1,27 @@
+name: samachat
+description: "sama-chat — 私聊 · 群聊 · 炫圈，轻量实时聊天应用"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+  web_socket_channel: ^3.0.0
+  provider: ^6.1.2
+  shared_preferences: ^2.3.2
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^6.0.2
+  image_picker: ^1.1.2
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

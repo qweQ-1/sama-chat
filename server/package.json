@@ -1,0 +1,22 @@
+{
+  "name": "sama-chat-server",
+  "version": "1.0.0",
+  "description": "sama-chat backend: auth, private/group messaging, moments, QR friend-add",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.0.1",
+    "fastify": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "lowdb": "^7.0.1",
+    "nanoid": "^5.0.9"
+  }
+}

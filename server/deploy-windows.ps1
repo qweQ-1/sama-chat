@@ -15,7 +15,17 @@ $ProgressPreference = "SilentlyContinue"   # 关掉进度条，PS5.1 下载快 1
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $WorkDir = "C:\sama-chat"
+
+# ---- 端口解析：优先环境变量 SAMA_PORT，其次上次保存的 port.txt，默认 8080 ----
+$portFile = Join-Path $WorkDir "port.txt"
 $Port = 8080
+if ($env:SAMA_PORT) {
+  try { $Port = [int]$env:SAMA_PORT } catch { Write-Host "[!] SAMA_PORT 无效，用默认值" -ForegroundColor Yellow }
+} elseif (Test-Path $portFile) {
+  try { $Port = [int]((Get-Content $portFile -First 1).Trim()) } catch {}
+}
+New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+Set-Content -Path $portFile -Value $Port -Encoding ascii
 
 # ---- 0. 管理员检查 -----------------------------------------------------------
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -26,6 +36,7 @@ if (-not $isAdmin) {
 
 Write-Host ""
 Write-Host "==================== 萨摩聊天 服务端部署 ====================" -ForegroundColor Cyan
+Write-Host "端口: $Port"
 Write-Host ""
 
 # ---- 1. 工作目录 -------------------------------------------------------------
@@ -137,6 +148,13 @@ set PORT=$Port
 set DATA_DIR=$WorkDir\data
 set UPLOAD_DIR=$WorkDir\data\uploads
 set JWT_SECRET=$secret
+netstat -ano | findstr ":%PORT% " | findstr "LISTENING" >nul
+if not errorlevel 1 (
+  echo [sama-chat] Port %PORT% is already in use; the server may already be running.
+  echo [sama-chat] To force a restart: taskkill /IM node.exe /F, then run start.bat again.
+  timeout /t 15 /nobreak >nul
+  exit /b
+)
 :main
 "$nodeExe" src\index.js
 echo [sama-chat] exited, restart in 5s...
@@ -211,3 +229,4 @@ Write-Host "常用操作："
 Write-Host "  停止服务: taskkill /IM node.exe /F"
 Write-Host "  启动服务: 双击 $WorkDir\start.bat（或重启服务器自动拉起）"
 Write-Host "  数据目录: $WorkDir\data"
+Write-Host '  更换端口: PowerShell 里运行 $env:SAMA_PORT=新端口 后重跑本脚本（或直接改 start.bat 里的 PORT）'

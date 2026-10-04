@@ -1,0 +1,14 @@
+# Render.com 一键部署配置（Blueprint）
+# 用法：Render 控制台 → New + → Blueprint → 连接本仓库 → Apply
+services:
+  - type: web
+    name: sama-chat
+    runtime: docker
+    plan: free
+    region: singapore
+    rootDir: server
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true

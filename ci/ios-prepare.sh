@@ -15,6 +15,12 @@ plist_set() {
 plist_set CFBundleDisplayName "萨摩聊天"
 plist_set NSCameraUsageDescription "用于扫描二维码，面对面添加好友"
 plist_set NSPhotoLibraryUsageDescription "用于发送图片、发布炫圈和更换头像"
+plist_set NSLocalNetworkUsageDescription "用于连接你的聊天服务器（局域网内测试时）"
+
+# Allow plain-HTTP connections (self-hosted servers may not have HTTPS yet).
+/usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST" 2>/dev/null \
+  || /usr/libexec/PlistBuddy -c "Set :NSAppTransportSecurity:NSAllowsArbitraryLoads true" "$PLIST"
 
 echo "--- plist keys ---"
 /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$PLIST" || true

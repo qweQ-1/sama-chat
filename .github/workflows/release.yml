@@ -1,0 +1,102 @@
+name: Release
+
+# Tag a commit (e.g. `git tag v1.0.0 && git push origin v1.0.0`) to publish a
+# release. Assets (APK + unsigned IPA) are pulled straight from the latest
+# successful CI run — no local downloads involved.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '版本标签（如 v1.0.0）'
+        required: true
+      run_id:
+        description: '指定 CI run ID（留空 = 自动找最新的成功构建）'
+        required: false
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version and source run
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+            RUN_ID="${{ inputs.run_id }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            RUN_ID=""
+          fi
+          SHA="$(git rev-parse HEAD)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh run list -R "${{ github.repository }}" --workflow ci.yml \
+              --commit "$SHA" --status success --limit 1 \
+              --json databaseId --jq '.[0].databaseId // empty')
+          fi
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh run list -R "${{ github.repository }}" --workflow ci.yml \
+              --status success --limit 1 \
+              --json databaseId --jq '.[0].databaseId // empty')
+          fi
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::No successful CI run found to source artifacts from"
+            exit 1
+          fi
+          echo "source run: $RUN_ID"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download APK artifact from CI
+        uses: actions/download-artifact@v4
+        with:
+          name: sama-chat-apk
+          run-id: ${{ steps.meta.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: dist
+
+      - name: Download IPA artifact from CI
+        uses: actions/download-artifact@v4
+        with:
+          name: sama-chat-ipa
+          run-id: ${{ steps.meta.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: dist
+
+      - name: Normalize asset filenames
+        run: |
+          set -euo pipefail
+          cd dist
+          find . -maxdepth 3 -type f | sort
+          VERSION="${{ steps.meta.outputs.version }}"
+          APK="$(find . -name '*.apk' | head -1)"
+          IPA="$(find . -name '*.ipa' | head -1)"
+          if [ -n "$APK" ]; then mv "$APK" "SamaChat-${VERSION}.apk"; fi
+          if [ -n "$IPA" ]; then mv "$IPA" "SamaChat-${VERSION}-unsigned.ipa"; fi
+          ls -la
+          test -f "SamaChat-${VERSION}.apk"
+          test -f "SamaChat-${VERSION}-unsigned.ipa"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.tag }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            dist/SamaChat-*.apk
+            dist/SamaChat-*-unsigned.ipa
+          fail_on_unmatched_files: true

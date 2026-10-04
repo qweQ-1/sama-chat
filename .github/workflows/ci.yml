@@ -43,7 +43,7 @@ jobs:
         run: |
           cd app
           SERVER="${{ vars.SAMA_SERVER }}"
-          SERVER="${SERVER:-http://127.0.0.1:8080}"
+          SERVER="${SERVER:-https://alloy-formed-duty-private.trycloudflare.com}"
           flutter build apk --release --dart-define=SAMA_SERVER=$SERVER
 
       - name: Upload APK
@@ -77,7 +77,7 @@ jobs:
         run: |
           cd app
           SERVER="${{ vars.SAMA_SERVER }}"
-          SERVER="${SERVER:-http://127.0.0.1:8080}"
+          SERVER="${SERVER:-https://alloy-formed-duty-private.trycloudflare.com}"
           flutter build ios --release --no-codesign --dart-define=SAMA_SERVER=$SERVER
 
       - name: Package IPA

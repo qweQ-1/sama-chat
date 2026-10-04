@@ -22,8 +22,18 @@ if [ -f "$MANIFEST" ]; then
   if ! grep -q 'usesCleartextTraffic' "$MANIFEST"; then
     sed -i 's|<application |<application android:usesCleartextTraffic="true" |' "$MANIFEST"
   fi
+
+  # 通知权限 + 前台保活服务（flutter_foreground_task）
+  if ! grep -q 'POST_NOTIFICATIONS' "$MANIFEST"; then
+    sed -i 's|<manifest\([^>]*\)>|<manifest\1>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"/>|' "$MANIFEST"
+  fi
+  if ! grep -q 'ForegroundService' "$MANIFEST"; then
+    sed -i 's|<manifest |<manifest xmlns:tools="http://schemas.android.com/tools" |' "$MANIFEST"
+    sed -i 's|</application>|        <service android:name="com.pravera.flutter_foreground_task.service.ForegroundService" android:foregroundServiceType="dataSync" android:exported="false" tools:replace="android:foregroundServiceType" />\n    </application>|' "$MANIFEST"
+  fi
+
   echo "--- manifest network config ---"
-  grep -o 'android.permission.INTERNET\|usesCleartextTraffic="[^"]*"' "$MANIFEST" || true
+  grep -o 'android.permission.INTERNET\|POST_NOTIFICATIONS\|ForegroundService' "$MANIFEST" || true
 fi
 
 echo "android-prepare done"

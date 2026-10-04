@@ -1,34 +1,81 @@
-/// WebSocket realtime connection.
+/// WebSocket realtime connection with auto-reconnect.
 library;
 
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class Realtime {
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
   final _events = StreamController<Map<String, dynamic>>.broadcast();
-  bool _closedByUs = false;
+
+  String? _serverBase;
+  String? _token;
+  bool _shouldRun = false;
+  bool _connecting = false;
+  int _attempt = 0;
+  Timer? _retryTimer;
 
   /// All inbound server events: {event: string, data: dynamic}
+  /// 另有合成事件 rt:state = {connected: bool}（连接状态变化时发出）。
   Stream<Map<String, dynamic>> get events => _events.stream;
 
   bool get connected => _channel != null;
 
   Future<void> connect(String serverBase, String token) async {
-    disconnect();
-    _closedByUs = false;
+    _serverBase = serverBase;
+    _token = token;
+    _shouldRun = true;
+    _attempt = 0;
+    _retryTimer?.cancel();
+    await _open();
+  }
 
-    final wsBase = serverBase
-        .replaceFirst(RegExp(r'^https://'), 'wss://')
-        .replaceFirst(RegExp(r'^http://'), 'ws://');
-    final uri = Uri.parse('$wsBase/ws?token=${Uri.encodeQueryComponent(token)}');
+  /// 强制检查连接（App 回到前台时调用），断开则立即重连。
+  void ensureConnected() {
+    if (!_shouldRun || connected || _connecting) return;
+    _attempt = 0;
+    _retryTimer?.cancel();
+    unawaited(_open());
+  }
 
+  Future<void> _open() async {
+    if (!_shouldRun || _connecting) return;
+    final base = _serverBase;
+    final token = _token;
+    if (base == null || token == null) return;
+
+    _connecting = true;
     try {
+      _closeChannel();
+      final wsBase = base
+          .replaceFirst(RegExp(r'^https://'), 'wss://')
+          .replaceFirst(RegExp(r'^http://'), 'ws://');
+      final uri = Uri.parse('$wsBase/ws?token=${Uri.encodeQueryComponent(token)}');
+
       final ch = WebSocketChannel.connect(uri);
+      try {
+        await ch.ready;
+      } catch (_) {
+        try {
+          await ch.sink.close();
+        } catch (_) {}
+        rethrow;
+      }
+      if (!_shouldRun) {
+        try {
+          await ch.sink.close();
+        } catch (_) {}
+        return;
+      }
       _channel = ch;
-      await ch.ready;
+      _attempt = 0;
+      _events.add({
+        'event': 'rt:state',
+        'data': {'connected': true},
+      });
       _sub = ch.stream.listen(
         (raw) {
           try {
@@ -36,12 +83,45 @@ class Realtime {
             if (m is Map<String, dynamic>) _events.add(m);
           } catch (_) {/* ignore malformed frames */}
         },
-        onDone: () => _channel = null,
-        onError: (_) => _channel = null,
+        onDone: _onClosed,
+        onError: (_) => _onClosed(),
         cancelOnError: false,
       );
     } catch (_) {
-      _channel = null;
+      _onClosed();
+    } finally {
+      _connecting = false;
+    }
+  }
+
+  void _onClosed() {
+    _closeChannel();
+    _events.add({
+      'event': 'rt:state',
+      'data': {'connected': false},
+    });
+    if (!_shouldRun) return;
+    _attempt++;
+    final secs = _attempt <= 1
+        ? 2
+        : _attempt <= 3
+            ? 5
+            : _attempt <= 6
+                ? 15
+                : 30;
+    _retryTimer?.cancel();
+    _retryTimer = Timer(Duration(seconds: secs), _open);
+  }
+
+  void _closeChannel() {
+    _sub?.cancel();
+    _sub = null;
+    final ch = _channel;
+    _channel = null;
+    if (ch != null) {
+      try {
+        ch.sink.close();
+      } catch (_) {}
     }
   }
 
@@ -54,14 +134,9 @@ class Realtime {
   }
 
   void disconnect() {
-    _closedByUs = true;
-    _sub?.cancel();
-    _sub = null;
-    try {
-      _channel?.sink.close();
-    } catch (_) {}
-    _channel = null;
+    _shouldRun = false;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _closeChannel();
   }
-
-  bool get wasClosedByUs => _closedByUs;
 }

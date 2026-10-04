@@ -14,7 +14,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _index = 0;
 
   static const _pages = [
@@ -23,6 +23,29 @@ class _HomeScreenState extends State<HomeScreen> {
     MomentsTab(),
     ProfileTab(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    context.read<AppState>().handleResume();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final s = context.read<AppState>();
+    if (state == AppLifecycleState.resumed) {
+      s.handleResume();
+    } else if (state == AppLifecycleState.paused) {
+      s.handleBackground();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

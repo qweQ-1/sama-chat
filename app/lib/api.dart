@@ -18,6 +18,9 @@ class Api {
   String base;
   String? token;
 
+  /// 持久 HTTP 客户端：复用 TCP+TLS 连接，避免每次请求重新握手（延迟大头）。
+  final http.Client _client = http.Client();
+
   Api(this.base);
 
   Map<String, String> get _headers => {
@@ -36,13 +39,13 @@ class Api {
     try {
       switch (method) {
         case 'GET':
-          res = await http.get(uri, headers: _headers);
+          res = await _client.get(uri, headers: _headers);
         case 'POST':
-          res = await http.post(uri, headers: _headers, body: body != null ? jsonEncode(body) : null);
+          res = await _client.post(uri, headers: _headers, body: body != null ? jsonEncode(body) : null);
         case 'PATCH':
-          res = await http.patch(uri, headers: _headers, body: body != null ? jsonEncode(body) : null);
+          res = await _client.patch(uri, headers: _headers, body: body != null ? jsonEncode(body) : null);
         case 'DELETE':
-          res = await http.delete(uri, headers: _headers);
+          res = await _client.delete(uri, headers: _headers);
         default:
           throw ApiException(0, '不支持的请求方法');
       }

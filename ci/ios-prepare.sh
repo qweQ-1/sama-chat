@@ -22,6 +22,12 @@ plist_set NSLocalNetworkUsageDescription "用于连接你的聊天服务器（�
 /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Set :NSAppTransportSecurity:NSAllowsArbitraryLoads true" "$PLIST"
 
+# 后台音频模式：App 退到后台后保持在线接收消息（通知保活）
+/usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" "$PLIST" 2>/dev/null || true
+echo "--- UIBackgroundModes ---"
+/usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$PLIST" 2>/dev/null || true
+
 echo "--- plist keys ---"
 /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$PLIST" || true
 /usr/libexec/PlistBuddy -c "Print :NSCameraUsageDescription" "$PLIST" || true

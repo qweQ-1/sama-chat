@@ -191,6 +191,22 @@ class ProfileTab extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _changeAvatar(context),
           ),
+          SwitchListTile(
+            secondary: const Icon(Icons.notifications_outlined),
+            title: const Text('消息通知'),
+            subtitle: const Text('收到新消息时弹出通知',
+                style: TextStyle(fontSize: 12)),
+            value: s.notificationsEnabled,
+            onChanged: (v) => s.setNotifications(v),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.wifi_tethering),
+            title: const Text('后台保活'),
+            subtitle: const Text('App 退到后台后仍保持在线收消息（会增加少量耗电）',
+                style: TextStyle(fontSize: 12)),
+            value: s.keepAliveEnabled,
+            onChanged: (v) => s.setKeepAlive(v),
+          ),
           ListTile(
             leading: const Icon(Icons.dns_outlined),
             title: const Text('服务器设置'),
@@ -204,12 +220,12 @@ class ProfileTab extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('${AppConfig.appName} v1.0.1',
+            subtitle: const Text('${AppConfig.appName} v1.1.0',
                 style: TextStyle(fontSize: 12)),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: AppConfig.appName,
-              applicationVersion: '1.0.1',
+              applicationVersion: '1.1.0',
               children: const [
                 Text('一个轻量的实时聊天应用：私聊、群聊、炫圈、面对面扫码加好友。'),
               ],

@@ -9,7 +9,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 import 'config.dart';
+import 'keepalive.dart';
 import 'models.dart';
+import 'notifications.dart';
 import 'realtime.dart';
 
 class AppState extends ChangeNotifier {
@@ -36,12 +38,19 @@ class AppState extends ChangeNotifier {
   /// Conversation currently open on screen (suppresses unread badge).
   String? activeChatId;
 
+  /// 消息通知 / 后台保活开关（「我 → 设置」里可改）。
+  bool notificationsEnabled = true;
+  bool keepAliveEnabled = true;
+  bool appInForeground = true;
+
   // ---------------------------------------------------------------- boot
   Future<void> boot() async {
     rt.events.listen(_onRealtimeEvent);
     _prefs = await SharedPreferences.getInstance();
     serverBase = _prefs!.getString('serverBase') ?? AppConfig.defaultServer;
     api.base = serverBase;
+    notificationsEnabled = _prefs!.getBool('notifications') ?? true;
+    keepAliveEnabled = _prefs!.getBool('keepAlive') ?? true;
     token = _prefs!.getString('token');
     if (token != null && token!.isNotEmpty) {
       api.token = token;
@@ -81,6 +90,13 @@ class AppState extends ChangeNotifier {
 
   void _afterLogin() {
     _connectRealtime();
+    unawaited(AppNotifications.init());
+    if (notificationsEnabled) {
+      unawaited(AppNotifications.requestPermissions());
+    }
+    if (keepAliveEnabled) {
+      unawaited(KeepAlive.start());
+    }
     unawaited(refreshConversations());
     unawaited(refreshFriends());
     unawaited(refreshRequests());
@@ -90,6 +106,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> logout() async {
     rt.disconnect();
+    unawaited(KeepAlive.stop());
     token = null;
     api.token = null;
     me = null;
@@ -108,6 +125,55 @@ class AppState extends ChangeNotifier {
   Future<void> updateProfile({String? displayName, String? avatar}) async {
     me = await api.updateMe(displayName: displayName, avatar: avatar);
     notifyListeners();
+  }
+
+  // ---------------------------------------------------------- 通知 / 保活
+  Future<void> setNotifications(bool v) async {
+    notificationsEnabled = v;
+    if (v) unawaited(AppNotifications.requestPermissions());
+    await _prefs?.setBool('notifications', v);
+    notifyListeners();
+  }
+
+  Future<void> setKeepAlive(bool v) async {
+    keepAliveEnabled = v;
+    if (v) {
+      unawaited(KeepAlive.start());
+    } else {
+      unawaited(KeepAlive.stop());
+    }
+    await _prefs?.setBool('keepAlive', v);
+    notifyListeners();
+  }
+
+  /// App 回到前台。
+  void handleResume() {
+    appInForeground = true;
+    rt.ensureConnected();
+  }
+
+  /// App 退到后台。
+  void handleBackground() {
+    appInForeground = false;
+  }
+
+  void _maybeNotifyMessage(Message msg) {
+    if (!notificationsEnabled) return;
+    if (msg.senderId == me?.id) return;
+    if (activeChatId == msg.conversationId && appInForeground) return;
+    var title = msg.sender?.displayName ?? '新消息';
+    for (final c in conversations) {
+      if (c.id == msg.conversationId) {
+        if (c.isGroup) title = c.name;
+        break;
+      }
+    }
+    final body = msg.isImage ? '[图片]' : msg.content;
+    unawaited(AppNotifications.showMessage(
+      title: title,
+      body: body,
+      id: msg.conversationId.hashCode & 0x7fffffff,
+    ));
   }
 
   /// Change the server address (e.g. after deploying). Logs the user out.
@@ -138,10 +204,18 @@ class AppState extends ChangeNotifier {
       case 'connected':
         rtConnected = true;
         notifyListeners();
+      case 'rt:state':
+        if (data is Map) {
+          rtConnected = data['connected'] as bool? ?? false;
+          if (rtConnected) unawaited(refreshConversations());
+          notifyListeners();
+        }
       case 'message:new':
         if (data is Map) {
-          _appendMessage(
-              Message.fromJson((data['message'] as Map).cast<String, dynamic>()));
+          final msg =
+              Message.fromJson((data['message'] as Map).cast<String, dynamic>());
+          _appendMessage(msg);
+          _maybeNotifyMessage(msg);
         }
       case 'typing':
         if (data is Map) {
@@ -190,6 +264,16 @@ class AppState extends ChangeNotifier {
           }
         }
       case 'friend:request':
+        if (notificationsEnabled) {
+          final from = (data is Map && data['from'] is Map)
+              ? User.fromJson((data['from'] as Map).cast<String, dynamic>())
+              : null;
+          unawaited(AppNotifications.showMessage(
+            title: '新的好友请求',
+            body: '${from?.displayName ?? '有人'} 想加你为好友',
+            id: 900001,
+          ));
+        }
         unawaited(refreshRequests());
       case 'friend:accepted':
         unawaited(refreshFriends());

@@ -6,6 +6,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Remove the template counter-app test (we ship our own tests).
 rm -f "$ROOT/app/test/widget_test.dart"
 
+# flutter_local_notifications 需要 core library desugaring
+python3 "$ROOT/ci/patch-gradle.py"
+
 # App display name.
 MANIFEST="$ROOT/app/android/app/src/main/AndroidManifest.xml"
 if [ -f "$MANIFEST" ]; then

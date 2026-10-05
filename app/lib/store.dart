@@ -185,7 +185,7 @@ class AppState extends ChangeNotifier {
         break;
       }
     }
-    final body = msg.isImage ? '[图片]' : msg.content;
+    final body = msg.isImage ? '[图片]' : (msg.isVideo ? '[视频]' : msg.content);
     unawaited(AppNotifications.showMessage(
       title: title,
       body: body,
@@ -312,6 +312,14 @@ class AppState extends ChangeNotifier {
         unawaited(refreshConversations());
       case 'moment:new':
         unawaited(refreshMoments());
+      case 'moment:deleted':
+        if (data is Map) {
+          final mid = data['momentId'] as String?;
+          if (mid != null) {
+            moments = moments.where((m) => m.id != mid).toList();
+            notifyListeners();
+          }
+        }
     }
   }
 
@@ -466,6 +474,14 @@ class AppState extends ChangeNotifier {
     return msg;
   }
 
+  /// 发送视频（原始二进制上传 → 消息类型 video）。
+  Future<Message> sendVideo(String conversationId, Uint8List bytes, String ext) async {
+    final url = await api.uploadVideo(bytes, _normVideoExt(ext));
+    final msg = await api.sendMessage(conversationId, content: url, type: 'video');
+    _appendMessage(msg);
+    return msg;
+  }
+
   void sendTyping(String conversationId, bool typing) {
     rt.send('typing', {'conversationId': conversationId, 'typing': typing});
   }
@@ -549,9 +565,22 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// 删除自己的炫圈（发布 2 分钟内；服务端校验）。
+  Future<void> deleteMoment(String momentId) async {
+    await api.deleteMoment(momentId);
+    moments = moments.where((m) => m.id != momentId).toList();
+    notifyListeners();
+  }
+
   String _normExt(String ext) {
     final e = ext.toLowerCase().replaceAll('.', '');
     const allowed = {'jpg', 'jpeg', 'png', 'gif', 'webp'};
     return allowed.contains(e) ? e : 'jpg';
+  }
+
+  String _normVideoExt(String ext) {
+    final e = ext.toLowerCase().replaceAll('.', '');
+    const allowed = {'mp4', 'mov', 'm4v', 'webm'};
+    return allowed.contains(e) ? e : 'mp4';
   }
 }

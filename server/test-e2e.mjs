@@ -1,6 +1,7 @@
 // End-to-end API smoke test for the sama-chat backend.
 // Run: node test-e2e.mjs  (server must be on :8080)
 import WebSocket from 'ws';
+import http from 'node:http';
 
 const BASE = 'http://127.0.0.1:8080';
 let pass = 0, fail = 0;
@@ -318,6 +319,70 @@ const cB4 = await api('POST', `/conversations/${cvCAId}/messages`, { token: C, b
 ok('解除后可以正常发消息', cB4.status === 200);
 const flA4 = await api('GET', '/friends', { token: A });
 ok('解除后好友仍在列表', flA4.json?.friends?.some((f) => f.id === idC));
+
+console.log('\n== 13. 炫圈删除（2 分钟窗口）==');
+const md1 = await api('POST', '/moments', { token: A, body: { text: '待删除的动态' } });
+const md1Id = md1.json?.moment?.id;
+const delM1 = await api('DELETE', `/moments/${md1Id}`, { token: A });
+ok('窗口内可删除自己的动态', delM1.status === 200, JSON.stringify(delM1.json));
+const feedBAfter = await api('GET', '/moments', { token: B });
+ok('删除后别人看不到了', !feedBAfter.json?.moments?.some((m) => m.id === md1Id));
+await new Promise((r) => setTimeout(r, 400));
+ok('好友收到 moment:deleted 事件', carol.events.some((e) => e.event === 'moment:deleted' && e.data?.momentId === md1Id));
+const md2 = await api('POST', '/moments', { token: A, body: { text: '不给你删' } });
+const delM2 = await api('DELETE', `/moments/${md2.json?.moment?.id}`, { token: B });
+ok('不能删除别人的动态', delM2.status === 403);
+const delM4 = await api('DELETE', `/moments/${md1Id}`, { token: A });
+ok('重复删除返回 404', delM4.status === 404);
+const WIN = Number(process.env.MOMENT_DELETE_WINDOW_MS ?? 120000);
+if (WIN < 10000) {
+  const md3 = await api('POST', '/moments', { token: A, body: { text: '过期不能删' } });
+  await new Promise((r) => setTimeout(r, WIN + 800));
+  const delM3 = await api('DELETE', `/moments/${md3.json?.moment?.id}`, { token: A });
+  ok('超过窗口后不能删除', delM3.status === 403, JSON.stringify(delM3.json));
+} else {
+  console.log('  ⏭️  跳过过期场景（设置 MOMENT_DELETE_WINDOW_MS 后重跑）');
+}
+
+console.log('\n== 14. 视频上传与视频消息 ==');
+const fakeVideo = Buffer.concat([
+  Buffer.from('00000020667479706d703432', 'hex'),
+  Buffer.alloc(2048, 7),
+]);
+// iSH 的 fetch polyfill 会把 Buffer body JSON 化，这里用原生 http 发送二进制。
+const rawPost = (p, headers, buf) =>
+  new Promise((resolve, reject) => {
+    const req = http.request(`${BASE}${p}`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Length': buf.length },
+    }, (res) => {
+      let data = '';
+      res.on('data', (c) => (data += c));
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+    });
+    req.on('error', reject);
+    req.end(buf);
+  });
+const upv = await rawPost('/upload/video?ext=mp4', { Authorization: `Bearer ${A}`, 'Content-Type': 'application/octet-stream' }, fakeVideo);
+let upvJson = null;
+try { upvJson = JSON.parse(upv.body); } catch {}
+ok('视频上传成功', upv.status === 200 && upvJson?.size === fakeVideo.length && typeof upvJson?.url === 'string', upv.body);
+const badExtV = await rawPost('/upload/video?ext=exe', { Authorization: `Bearer ${A}`, 'Content-Type': 'application/octet-stream' }, fakeVideo);
+ok('非法扩展名被拒', badExtV.status === 400);
+const vmsg = await api('POST', `/conversations/${cvCAId}/messages`, {
+  token: A,
+  body: { content: upvJson.url, type: 'video' },
+});
+ok('视频消息发送成功', vmsg.status === 200 && vmsg.json?.message?.type === 'video');
+const histV = await api('GET', `/conversations/${cvCAId}/messages`, { token: A });
+ok('历史消息类型为 video', histV.json?.messages?.some((m) => m.id === vmsg.json?.message?.id && m.type === 'video'));
+const mgFull = await fetch(`${BASE}${upvJson.url}`);
+ok('媒体可访问 (200)', mgFull.status === 200 && Number(mgFull.headers.get('content-length')) === fakeVideo.length);
+await mgFull.arrayBuffer();
+const mgRange = await fetch(`${BASE}${upvJson.url}`, { headers: { Range: 'bytes=0-3' } });
+ok('Range 请求返回 206', mgRange.status === 206);
+const mgBody = Buffer.from(await mgRange.arrayBuffer());
+ok('Range 内容长度正确', mgBody.length === 4);
 
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 

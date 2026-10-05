@@ -32,6 +32,13 @@ app.addContentTypeParser(
   },
 );
 
+// Raw binary bodies (video uploads) — up to 52 MB.
+app.addContentTypeParser(
+  'application/octet-stream',
+  { parseAs: 'buffer', bodyLimit: 52 * 1024 * 1024 },
+  (req, body, done) => done(null, body),
+);
+
 // CORS — the Flutter app talks to us from a different origin.
 app.addHook('onRequest', async (req, reply) => {
   reply.header('Access-Control-Allow-Origin', '*');

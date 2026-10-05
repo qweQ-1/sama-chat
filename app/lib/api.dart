@@ -271,10 +271,45 @@ class Api {
     return MomentComment.fromJson((j['comment'] as Map).cast<String, dynamic>());
   }
 
+  /// 删除自己的炫圈（发布 2 分钟内）。
+  Future<void> deleteMoment(String momentId) async {
+    await _req('DELETE', '/moments/$momentId');
+  }
+
   // ---------- upload ----------
   Future<String> uploadImage(Uint8List bytes, String ext) async {
     final j = await _req('POST', '/upload',
         body: {'data': base64Encode(bytes), 'ext': ext});
     return j['url'] as String;
+  }
+
+  /// 视频上传：application/octet-stream 原始二进制（避免 base64 额外开销）。
+  Future<String> uploadVideo(Uint8List bytes, String ext) async {
+    final uri = Uri.parse('$base/upload/video?ext=$ext');
+    late http.Response res;
+    try {
+      res = await _client.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'ngrok-skip-browser-warning': '1',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: bytes,
+      );
+    } catch (e) {
+      throw ApiException(0, '网络连接失败，请检查服务器地址');
+    }
+    Map<String, dynamic> json;
+    try {
+      json = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    } catch (_) {
+      json = {};
+    }
+    if (res.statusCode >= 400) {
+      throw ApiException(
+          res.statusCode, json['message'] as String? ?? '视频上传失败 (${res.statusCode})');
+    }
+    return json['url'] as String;
   }
 }

@@ -9,6 +9,7 @@ import '../models.dart';
 import '../store.dart';
 import '../widgets.dart';
 import 'group_info.dart';
+import 'video_viewer.dart';
 
 class ChatScreen extends StatefulWidget {
   final Conversation conversation;
@@ -25,7 +26,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _typingTimer;
   bool _sentTypingFalse = true;
   bool _loading = true;
-  bool _sendingImage = false;
+  bool _sendingMedia = false;
 
   String get convId => widget.conversation.id;
 
@@ -99,7 +100,7 @@ class _ChatScreenState extends State<ChatScreen> {
         imageQuality: 82,
       );
       if (x == null) return;
-      setState(() => _sendingImage = true);
+      setState(() => _sendingMedia = true);
       final bytes = await x.readAsBytes();
       final ext = x.name.contains('.') ? x.name.split('.').last : 'jpg';
       await s.sendImage(convId, bytes, ext);
@@ -108,7 +109,75 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       if (mounted) showError(context, '发送图片失败: $e');
     } finally {
-      if (mounted) setState(() => _sendingImage = false);
+      if (mounted) setState(() => _sendingMedia = false);
+    }
+  }
+
+  Future<void> _sendVideo(ImageSource source) async {
+    final s = context.read<AppState>();
+    try {
+      final x = await _picker.pickVideo(
+        source: source,
+        maxDuration: const Duration(minutes: 3),
+      );
+      if (x == null) return;
+      final len = await x.length();
+      if (len > 40 * 1024 * 1024) {
+        if (mounted) showError(context, '视频太大了（限 40MB，约 1 分钟）');
+        return;
+      }
+      setState(() => _sendingMedia = true);
+      final bytes = await x.readAsBytes();
+      final ext =
+          x.name.contains('.') ? x.name.split('.').last.toLowerCase() : 'mp4';
+      await s.sendVideo(convId, bytes, ext);
+    } on ApiException catch (e) {
+      if (mounted) showError(context, e.message);
+    } catch (e) {
+      if (mounted) showError(context, '发送视频失败: $e');
+    } finally {
+      if (mounted) setState(() => _sendingMedia = false);
+    }
+  }
+
+  Future<void> _pickAttachment() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('图片'),
+              onTap: () => Navigator.pop(ctx, 'image'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam_outlined),
+              title: const Text('视频（从相册选择）'),
+              subtitle: const Text('最长 3 分钟 · 限 40MB',
+                  style: TextStyle(fontSize: 12)),
+              onTap: () => Navigator.pop(ctx, 'video'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.video_camera_back_outlined),
+              title: const Text('拍摄视频'),
+              subtitle: const Text('最长 3 分钟 · 限 40MB',
+                  style: TextStyle(fontSize: 12)),
+              onTap: () => Navigator.pop(ctx, 'camera'),
+            ),
+            const SizedBox(height: 6),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'image') {
+      await _sendImage();
+    } else if (choice == 'video') {
+      await _sendVideo(ImageSource.gallery);
+    } else if (choice == 'camera') {
+      await _sendVideo(ImageSource.camera);
     }
   }
 
@@ -246,8 +315,8 @@ class _ChatScreenState extends State<ChatScreen> {
             controller: _input,
             onChanged: _onInputChanged,
             onSend: _send,
-            onPickImage: _sendImage,
-            sendingImage: _sendingImage,
+            onAttach: _pickAttachment,
+            sendingMedia: _sendingMedia,
           ),
         ],
       ),
@@ -259,15 +328,15 @@ class _InputBar extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final VoidCallback onSend;
-  final VoidCallback onPickImage;
-  final bool sendingImage;
+  final VoidCallback onAttach;
+  final bool sendingMedia;
 
   const _InputBar({
     required this.controller,
     required this.onChanged,
     required this.onSend,
-    required this.onPickImage,
-    required this.sendingImage,
+    required this.onAttach,
+    required this.sendingMedia,
   });
 
   @override
@@ -284,13 +353,13 @@ class _InputBar extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             IconButton(
-              onPressed: sendingImage ? null : onPickImage,
-              icon: sendingImage
+              onPressed: sendingMedia ? null : onAttach,
+              icon: sendingMedia
                   ? const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.add_photo_alternate_outlined),
+                  : const Icon(Icons.add_circle_outline),
             ),
             Expanded(
               child: TextField(
@@ -367,7 +436,9 @@ class _Bubble extends StatelessWidget {
       );
     }
 
-    Widget content = message.isImage
+    Widget content = message.isVideo
+        ? _videoBubble(context, message)
+        : message.isImage
         ? ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Image.network(
@@ -499,6 +570,47 @@ class _Bubble extends StatelessWidget {
       ],
     );
   }
+}
+
+Widget _videoBubble(BuildContext context, Message message) {
+  final url = resolveUrl(context, message.content);
+  return GestureDetector(
+    onTap: () => Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => VideoViewerScreen(url: url)),
+    ),
+    child: Container(
+      width: 200,
+      height: 140,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF3A3F55), Color(0xFF16181F)],
+        ),
+      ),
+      child: Stack(
+        children: [
+          const Center(
+            child: Icon(Icons.play_circle_fill, size: 52, color: Colors.white70),
+          ),
+          Positioned(
+            left: 10,
+            bottom: 8,
+            child: Row(
+              children: const [
+                Icon(Icons.videocam, size: 13, color: Colors.white70),
+                SizedBox(width: 4),
+                Text('视频',
+                    style: TextStyle(color: Colors.white70, fontSize: 11.5)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// 新消息入场动画（淡入 + 轻微上滑），仅新消息播放一次。

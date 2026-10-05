@@ -39,7 +39,7 @@ class Message {
   final String id;
   final String conversationId;
   final String senderId;
-  final String type; // 'text' | 'image'
+  final String type; // 'text' | 'image' | 'video'
   final String content;
   final int createdAt;
   final List<String> readBy;
@@ -63,6 +63,7 @@ class Message {
   });
 
   bool get isImage => type == 'image';
+  bool get isVideo => type == 'video';
 
   factory Message.fromJson(Map<String, dynamic> j) => Message(
         id: j['id'] as String,

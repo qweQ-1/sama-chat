@@ -28,14 +28,22 @@ export const UPLOAD_DIR =
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const ALLOWED_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
+const ALLOWED_VIDEO_EXT = new Set(['mp4', 'mov', 'm4v', 'webm']);
 const MIME = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   png: 'image/png',
   gif: 'image/gif',
   webp: 'image/webp',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  m4v: 'video/x-m4v',
+  webm: 'video/webm',
 };
 const MAX_UPLOAD_BYTES = 6 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 48 * 1024 * 1024;
+const MEDIA_NAME_RE =
+  /^(img|vid)_[A-Za-z0-9_-]{6,32}\.(jpg|jpeg|png|gif|webp|mp4|mov|m4v|webm)$/;
 
 export function registerApiRoutes(app, io) {
   // ---------- uploads ----------
@@ -62,15 +70,71 @@ export function registerApiRoutes(app, io) {
     return { url: `/uploads/${name}`, size: buf.length };
   });
 
+  // Raw binary video upload (application/octet-stream) — avoids base64 overhead.
+  app.post(
+    '/upload/video',
+    { preHandler: app.auth, bodyLimit: 52 * 1024 * 1024 },
+    async (req, reply) => {
+      const ext = String(req.query?.ext ?? 'mp4')
+        .toLowerCase()
+        .replace(/^\./, '');
+      if (!ALLOWED_VIDEO_EXT.has(ext)) {
+        return reply.code(400).send({ error: 'bad_ext', message: '不支持的视频格式' });
+      }
+      const buf = req.body;
+      if (!Buffer.isBuffer(buf) || buf.length === 0) {
+        return reply.code(400).send({ error: 'empty', message: '视频数据为空' });
+      }
+      if (buf.length > MAX_VIDEO_BYTES) {
+        return reply.code(413).send({ error: 'too_large', message: '视频过大（限 48MB）' });
+      }
+      const name = `${newId('vid')}.${ext}`;
+      fs.writeFileSync(path.join(UPLOAD_DIR, name), buf);
+      return { url: `/uploads/${name}`, size: buf.length };
+    },
+  );
+
+  // Serve media with HTTP Range support (video streaming / seeking needs it).
   app.get('/uploads/:name', async (req, reply) => {
     const name = String(req.params.name ?? '');
-    if (!/^img_[A-Za-z0-9_-]{6,32}\.(jpg|jpeg|png|gif|webp)$/.test(name)) {
+    if (!MEDIA_NAME_RE.test(name)) {
       return reply.code(404).send({ error: 'not_found' });
     }
     const file = path.join(UPLOAD_DIR, name);
     if (!fs.existsSync(file)) return reply.code(404).send({ error: 'not_found' });
     const ext = name.split('.').pop();
-    return reply.type(MIME[ext] ?? 'application/octet-stream').send(fs.readFileSync(file));
+    const mime = MIME[ext] ?? 'application/octet-stream';
+    const size = fs.statSync(file).size;
+    const range = req.headers.range;
+    if (range) {
+      const m = /^bytes=(\d*)-(\d*)$/.exec(String(range).trim());
+      if (m && (m[1] !== '' || m[2] !== '')) {
+        let start = m[1] === '' ? null : Number(m[1]);
+        let end = m[2] === '' ? null : Number(m[2]);
+        if (start === null) {
+          start = Math.max(0, size - (end ?? 0));
+          end = size - 1;
+        } else if (end === null || end > size - 1) {
+          end = size - 1;
+        }
+        if (start > end || start >= size) {
+          return reply.code(416).header('Content-Range', `bytes */${size}`).send();
+        }
+        return reply
+          .code(206)
+          .headers({
+            'Content-Range': `bytes ${start}-${end}/${size}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': String(end - start + 1),
+          })
+          .type(mime)
+          .send(fs.createReadStream(file, { start, end }));
+      }
+    }
+    return reply
+      .headers({ 'Accept-Ranges': 'bytes', 'Content-Length': String(size) })
+      .type(mime)
+      .send(fs.createReadStream(file));
   });
 
   // ---------- users ----------
@@ -513,7 +577,7 @@ export function registerApiRoutes(app, io) {
       conversationId: conv.id,
       senderId: req.userId,
       sender: publicUser(findUserById(req.userId)),
-      type: req.body?.type === 'image' ? 'image' : 'text',
+      type: ['image', 'video'].includes(req.body?.type) ? req.body.type : 'text',
       content,
       createdAt: now(),
       readBy: [req.userId],
@@ -640,5 +704,28 @@ export function registerApiRoutes(app, io) {
     moment.comments.push(comment);
     await save();
     return { comment };
+  });
+
+  // 删除自己的炫圈（发布 2 分钟内）
+  app.delete('/moments/:id', { preHandler: app.auth }, async (req, reply) => {
+    const idx = db.data.moments.findIndex((m) => m.id === req.params.id);
+    if (idx < 0) {
+      return reply.code(404).send({ error: 'not_found', message: '动态不存在或已被删除' });
+    }
+    const moment = db.data.moments[idx];
+    if (moment.authorId !== req.userId) {
+      return reply.code(403).send({ error: 'not_owner', message: '只能删除自己的动态' });
+    }
+    const windowMs = Number(process.env.MOMENT_DELETE_WINDOW_MS ?? 2 * 60 * 1000);
+    if (now() - moment.createdAt > windowMs) {
+      return reply.code(403).send({ error: 'too_old', message: '发布超过 2 分钟的动态不能删除' });
+    }
+    db.data.moments.splice(idx, 1);
+    await save();
+    for (const f of friendIdsOf(req.userId)) {
+      io?.toUser(f, 'moment:deleted', { momentId: moment.id });
+    }
+    io?.toUser(req.userId, 'moment:deleted', { momentId: moment.id });
+    return { ok: true };
   });
 }

@@ -56,9 +56,13 @@ class MomentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = context.read<AppState>();
     final m = moment;
+    final isMine = s.me != null && m.author?.id == s.me!.id;
+    final fresh = serverNowMs() - m.createdAt < 2 * 60 * 1000;
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+    return GestureDetector(
+      onLongPress: isMine ? () => _tryDelete(context, s, m) : null,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
@@ -88,6 +92,17 @@ class MomentCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (isMine && fresh)
+                TextButton(
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 32),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  onPressed: () => _tryDelete(context, s, m),
+                  child: Text('删除',
+                      style: TextStyle(
+                          fontSize: 12.5, color: Colors.grey.shade500)),
+                ),
             ],
           ),
           if (m.text.isNotEmpty)
@@ -155,7 +170,42 @@ class MomentCard extends StatelessWidget {
           ],
         ],
       ),
+      ),
     );
+  }
+
+  Future<void> _tryDelete(BuildContext context, AppState s, Moment m) async {
+    if (m.author?.id != s.me?.id) return;
+    if (serverNowMs() - m.createdAt >= 2 * 60 * 1000) {
+      showError(context, '发布超过 2 分钟，不能删除啦');
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除动态'),
+        content: const Text('删除后其他人都将看不到这条炫圈，确定删除吗？'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade400),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await s.deleteMoment(m.id);
+      if (context.mounted) showError(context, '已删除');
+    } on ApiException catch (e) {
+      if (context.mounted) showError(context, e.message);
+    } catch (e) {
+      if (context.mounted) showError(context, '删除失败: $e');
+    }
   }
 
   void _showCommentSheet(BuildContext context, AppState s, String momentId) {

@@ -56,20 +56,20 @@ const health = await api('GET', '/health');
 ok('health endpoint', health.json?.status === 'ok');
 
 const r1 = await api('POST', '/auth/register', {
-  body: { username: 'alice', password: 'secret123', displayName: '爱丽丝' },
+  body: { username: 'alice', password: 'secret123', displayName: '爱丽丝', phone: '13800000001' },
 });
 ok('register alice', r1.status === 200 && !!r1.json?.token, JSON.stringify(r1.json));
 
 const r2 = await api('POST', '/auth/register', {
-  body: { username: 'bob', password: 'secret123', displayName: '鲍勃' },
+  body: { username: 'bob', password: 'secret123', displayName: '鲍勃', phone: '13800000002' },
 });
 const r3 = await api('POST', '/auth/register', {
-  body: { username: 'carol', password: 'secret123', displayName: '卡罗' },
+  body: { username: 'carol', password: 'secret123', displayName: '卡罗', phone: '13800000003' },
 });
 ok('register bob & carol', r2.status === 200 && r3.status === 200);
 
 const dup = await api('POST', '/auth/register', {
-  body: { username: 'alice', password: 'secret123' },
+  body: { username: 'alice', password: 'secret123', phone: '13800000004' },
 });
 ok('duplicate username rejected', dup.status === 409);
 
@@ -383,6 +383,35 @@ const mgRange = await fetch(`${BASE}${upvJson.url}`, { headers: { Range: 'bytes=
 ok('Range 请求返回 206', mgRange.status === 206);
 const mgBody = Buffer.from(await mgRange.arrayBuffer());
 ok('Range 内容长度正确', mgBody.length === 4);
+
+console.log('\n== 15. 手机号注册 / 多账号登录 ==');
+const pr1 = await api('POST', '/auth/register', { body: { phone: '13900000001', password: 'secret123' } });
+ok('手机号注册成功（用户名=手机号）', pr1.status === 200 && pr1.json?.user?.username === '13900000001', JSON.stringify(pr1.json));
+ok('默认昵称为 用户+尾号', pr1.json?.user?.displayName === '用户0001');
+const pr2 = await api('POST', '/auth/register', { body: { phone: '13900000001', password: 'secret456', displayName: '二号机' } });
+ok('同手机号再注册（多账号）', pr2.status === 200 && pr2.json?.user?.username === '13900000001_2', JSON.stringify(pr2.json));
+const pr3 = await api('POST', '/auth/register', { body: { username: 'zoe', password: 'secret789', displayName: '佐伊', phone: '13900000001' } });
+ok('账号注册可绑定同一手机号', pr3.status === 200 && pr3.json?.user?.phone === '13900000001');
+const np1 = await api('POST', '/auth/register', { body: { username: 'nophone', password: 'secret123' } });
+ok('账号注册必须绑定手机号', np1.status === 400);
+const ip1 = await api('POST', '/auth/register', { body: { phone: '123', password: 'secret123' } });
+ok('非法手机号注册被拒', ip1.status === 400);
+const ac1 = await api('POST', '/auth/accounts', { body: { phone: '13900000001' } });
+ok('手机号可查到名下 3 个账号', ac1.json?.accounts?.length === 3, JSON.stringify(ac1.json));
+const unames = (ac1.json?.accounts ?? []).map((a) => a.username);
+ok('列表含三种用户名（手机号/_2/自定义）', unames.includes('13900000001') && unames.includes('13900000001_2') && unames.includes('zoe'));
+const acNone = await api('POST', '/auth/accounts', { body: { phone: '13911111111' } });
+ok('查无此号返回空列表', acNone.status === 200 && acNone.json?.accounts?.length === 0);
+const acBad = await api('POST', '/auth/accounts', { body: { phone: '12345' } });
+ok('非法手机号查询被拒', acBad.status === 400);
+const login2 = await api('POST', '/auth/login', { body: { username: '13900000001_2', password: 'secret456' } });
+ok('多账号之一可正常登录', login2.status === 200 && login2.json?.user?.username === '13900000001_2');
+const bind1 = await api('PATCH', '/auth/me', { token: A, body: { phone: '13900000001' } });
+ok('老账号可绑定手机号', bind1.status === 200 && bind1.json?.user?.phone === '13900000001');
+const ac2 = await api('POST', '/auth/accounts', { body: { phone: '13900000001' } });
+ok('绑定后列表变为 4 个', ac2.json?.accounts?.length === 4, String(ac2.json?.accounts?.length));
+const badBind = await api('PATCH', '/auth/me', { token: A, body: { phone: '999' } });
+ok('非法手机号绑定被拒', badBind.status === 400);
 
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 

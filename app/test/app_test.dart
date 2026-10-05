@@ -16,7 +16,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('登 录'), findsOneWidget);
+    expect(find.text('下一步'), findsOneWidget);
     expect(find.text('没有账号？立即注册'), findsOneWidget);
     expect(find.text('萨摩聊天'), findsOneWidget);
   });

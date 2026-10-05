@@ -109,6 +109,52 @@ class ProfileTab extends StatelessWidget {
     );
   }
 
+  void _bindPhone(BuildContext context) {
+    final s = context.read<AppState>();
+    final controller = TextEditingController(text: s.me?.phone ?? '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('绑定手机号'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.phone,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '手机号',
+            hintText: '11 位手机号',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              final p = controller.text.replaceAll(RegExp(r'[^\d]'), '');
+              Navigator.pop(ctx);
+              if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(p)) {
+                if (context.mounted) showError(context, '请输入正确的 11 位手机号');
+                return;
+              }
+              try {
+                await s.bindPhone(p);
+                if (context.mounted) showError(context, '手机号已绑定 ✓');
+              } on ApiException catch (e) {
+                if (context.mounted) showError(context, e.message);
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _maskPhone(String p) =>
+      p.length == 11 ? '${p.substring(0, 3)}****${p.substring(7)}' : p;
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
@@ -194,6 +240,18 @@ class ProfileTab extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _changeAvatar(context),
           ),
+          ListTile(
+            leading: const Icon(Icons.phone_iphone),
+            title: const Text('手机号'),
+            subtitle: Text(
+              (me?.phone.isEmpty ?? true)
+                  ? '未绑定 · 点这里绑定手机号'
+                  : _maskPhone(me!.phone),
+              style: const TextStyle(fontSize: 12),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _bindPhone(context),
+          ),
           SwitchListTile(
             secondary: const Icon(Icons.notifications_outlined),
             title: const Text('消息通知'),
@@ -261,12 +319,12 @@ class ProfileTab extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('${AppConfig.appName} v1.5.0',
+            subtitle: const Text('${AppConfig.appName} v1.6.0',
                 style: TextStyle(fontSize: 12)),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: AppConfig.appName,
-              applicationVersion: '1.5.0',
+              applicationVersion: '1.6.0',
               children: const [
                 Text('一个轻量的实时聊天应用：私聊、群聊、炫圈、面对面扫码加好友。'),
               ],

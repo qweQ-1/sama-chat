@@ -70,10 +70,30 @@ class Api {
   }
 
   // ---------- auth ----------
-  Future<(String, User)> register(String username, String password, String displayName) async {
-    final j = await _req('POST', '/auth/register',
-        body: {'username': username, 'password': password, 'displayName': displayName}, auth: false);
+  /// 注册：[username] 为空 = 手机号注册（服务端自动生成用户名）。
+  Future<(String, User)> register({
+    String? username,
+    required String password,
+    String? displayName,
+    required String phone,
+  }) async {
+    final j = await _req('POST', '/auth/register', body: {
+      if (username != null && username.trim().isNotEmpty)
+        'username': username.trim(),
+      'password': password,
+      if (displayName != null && displayName.trim().isNotEmpty)
+        'displayName': displayName.trim(),
+      'phone': phone,
+    }, auth: false);
     return (j['token'] as String, User.fromJson((j['user'] as Map).cast<String, dynamic>()));
+  }
+
+  /// 手机号登录第一步：查该手机号名下的所有账号。
+  Future<List<User>> accountsByPhone(String phone) async {
+    final j = await _req('POST', '/auth/accounts', body: {'phone': phone}, auth: false);
+    return (j['accounts'] as List)
+        .map((e) => User.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
   }
 
   Future<(String, User)> login(String username, String password) async {
@@ -87,10 +107,11 @@ class Api {
     return User.fromJson((j['user'] as Map).cast<String, dynamic>());
   }
 
-  Future<User> updateMe({String? displayName, String? avatar}) async {
+  Future<User> updateMe({String? displayName, String? avatar, String? phone}) async {
     final j = await _req('PATCH', '/auth/me', body: {
       if (displayName != null) 'displayName': displayName,
       if (avatar != null) 'avatar': avatar,
+      if (phone != null) 'phone': phone,
     });
     return User.fromJson((j['user'] as Map).cast<String, dynamic>());
   }

@@ -73,9 +73,28 @@ class AppState extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------- auth
-  Future<void> register(String username, String password, String displayName) async {
-    final (t, user) = await api.register(username, password, displayName);
+  Future<void> register({
+    String? username,
+    required String password,
+    String? displayName,
+    required String phone,
+  }) async {
+    final (t, user) = await api.register(
+      username: username,
+      password: password,
+      displayName: displayName,
+      phone: phone,
+    );
     await _saveSession(t, user);
+  }
+
+  /// 手机号名下的所有账号（登录第一步）。
+  Future<List<User>> accountsByPhone(String phone) => api.accountsByPhone(phone);
+
+  /// 绑定 / 修改绑定的手机号。
+  Future<void> bindPhone(String phone) async {
+    me = await api.updateMe(phone: phone);
+    notifyListeners();
   }
 
   Future<void> login(String username, String password) async {

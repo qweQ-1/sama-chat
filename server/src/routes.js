@@ -285,6 +285,33 @@ export function registerApiRoutes(app, io) {
     return { message };
   });
 
+  app.post('/conversations/:id/messages/:mid/recall', { preHandler: app.auth }, async (req, reply) => {
+    const conv = db.data.conversations.find((c) => c.id === req.params.id);
+    if (!conv || !conv.memberIds.includes(req.userId)) {
+      return reply.code(404).send({ error: 'not_found', message: '会话不存在' });
+    }
+    const msg = db.data.messages.find(
+      (m) => m.id === req.params.mid && m.conversationId === conv.id,
+    );
+    if (!msg) return reply.code(404).send({ error: 'not_found', message: '消息不存在' });
+    if (msg.senderId !== req.userId) {
+      return reply.code(403).send({ error: 'not_owner', message: '只能撤回自己的消息' });
+    }
+    if (msg.recalled) return { message: msg }; // 已撤回，幂等返回
+    if (now() - msg.createdAt > 5 * 60 * 1000) {
+      return reply.code(400).send({ error: 'too_old', message: '超过 5 分钟的消息不能撤回' });
+    }
+    msg.recalled = true;
+    msg.content = '';
+    await save();
+    io?.toConversation(conv, 'message:recalled', {
+      conversationId: conv.id,
+      messageId: msg.id,
+      senderId: msg.senderId,
+    });
+    return { message: msg };
+  });
+
   app.post('/conversations/:id/read', { preHandler: app.auth }, async (req, reply) => {
     const conv = db.data.conversations.find((c) => c.id === req.params.id);
     if (!conv || !conv.memberIds.includes(req.userId)) {

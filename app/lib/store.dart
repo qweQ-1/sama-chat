@@ -43,6 +43,9 @@ class AppState extends ChangeNotifier {
   bool keepAliveEnabled = true;
   bool appInForeground = true;
 
+  /// 诊断用：最近一次收到消息的时间。
+  DateTime? lastMessageAt;
+
   // ---------------------------------------------------------------- boot
   Future<void> boot() async {
     rt.events.listen(_onRealtimeEvent);
@@ -150,6 +153,7 @@ class AppState extends ChangeNotifier {
   void handleResume() {
     appInForeground = true;
     rt.ensureConnected();
+    if (keepAliveEnabled) unawaited(KeepAlive.start());
   }
 
   /// App 退到后台。
@@ -204,6 +208,15 @@ class AppState extends ChangeNotifier {
       case 'connected':
         rtConnected = true;
         notifyListeners();
+      case 'message:recalled':
+        if (data is Map) {
+          final convId = data['conversationId'] as String?;
+          final mid = data['messageId'] as String?;
+          if (convId != null && mid != null) {
+            _markRecalled(convId, mid);
+            unawaited(refreshConversations());
+          }
+        }
       case 'rt:state':
         if (data is Map) {
           rtConnected = data['connected'] as bool? ?? false;
@@ -290,6 +303,7 @@ class AppState extends ChangeNotifier {
     final list = chatMessages.putIfAbsent(msg.conversationId, () => []);
     if (list.any((m) => m.id == msg.id)) return; // dedupe REST echo
     list.add(msg);
+    lastMessageAt = DateTime.now();
 
     final idx = conversations.indexWhere((c) => c.id == msg.conversationId);
     if (idx >= 0) {
@@ -376,6 +390,25 @@ class AppState extends ChangeNotifier {
 
   void sendTyping(String conversationId, bool typing) {
     rt.send('typing', {'conversationId': conversationId, 'typing': typing});
+  }
+
+  /// 撤回一条自己发的消息（5 分钟内）。
+  Future<void> recallMessage(String conversationId, String messageId) async {
+    await api.recallMessage(conversationId, messageId);
+    _markRecalled(conversationId, messageId);
+    unawaited(refreshConversations());
+  }
+
+  void _markRecalled(String conversationId, String messageId) {
+    final list = chatMessages[conversationId];
+    if (list != null) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id == messageId && !list[i].recalled) {
+          list[i] = list[i].copyWith(recalled: true, content: '');
+        }
+      }
+    }
+    notifyListeners();
   }
 
   // ------------------------------------------------------------- friends

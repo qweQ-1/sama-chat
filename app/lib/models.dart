@@ -38,6 +38,7 @@ class Message {
   final int createdAt;
   final List<String> readBy;
   final User? sender;
+  final bool recalled;
 
   Message({
     required this.id,
@@ -48,6 +49,7 @@ class Message {
     required this.createdAt,
     required this.readBy,
     this.sender,
+    this.recalled = false,
   });
 
   bool get isImage => type == 'image';
@@ -64,6 +66,19 @@ class Message {
         sender: j['sender'] != null
             ? User.fromJson((j['sender'] as Map).cast<String, dynamic>())
             : null,
+        recalled: j['recalled'] as bool? ?? false,
+      );
+
+  Message copyWith({String? content, bool? recalled}) => Message(
+        id: id,
+        conversationId: conversationId,
+        senderId: senderId,
+        type: type,
+        content: content ?? this.content,
+        createdAt: createdAt,
+        readBy: readBy,
+        sender: sender,
+        recalled: recalled ?? this.recalled,
       );
 }
 

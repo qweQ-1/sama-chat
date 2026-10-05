@@ -223,6 +223,24 @@ ok('REST message in history', hist2.json?.messages?.some((m) => m.content === 'R
 const restEmpty = await api('POST', `/conversations/${convId}/messages`, { token: A, body: { content: '' } });
 ok('empty REST message rejected', restEmpty.status === 400);
 
+console.log('\n== 9. 消息撤回 ==');
+const fresh = await api('POST', `/conversations/${convId}/messages`, {
+  token: A, body: { content: '这条稍后会撤回' },
+});
+const freshId = fresh.json.message.id;
+await new Promise((r) => setTimeout(r, 400));
+const rec1 = await api('POST', `/conversations/${convId}/messages/${freshId}/recall`, { token: A });
+ok('撤回自己的消息', rec1.status === 200 && rec1.json?.message?.recalled === true);
+const recalledEvt = await waitFor(bob.events, 'message:recalled', (d) => d?.messageId === freshId);
+ok('bob 实时收到撤回事件', !!recalledEvt);
+const hist3 = await api('GET', `/conversations/${convId}/messages`, { token: B });
+const recalledMsg = hist3.json?.messages?.find((m) => m.id === freshId);
+ok('历史记录中内容已清空', recalledMsg?.recalled === true && recalledMsg?.content === '');
+const rec2 = await api('POST', `/conversations/${convId}/messages/${freshId}/recall`, { token: B });
+ok('不能撤回别人的消息', rec2.status === 403);
+const rec3 = await api('POST', `/conversations/${convId}/messages/${freshId}/recall`, { token: A });
+ok('重复撤回幂等', rec3.status === 200);
+
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 
 console.log(`\n===== RESULT: ${pass} passed, ${fail} failed =====`);

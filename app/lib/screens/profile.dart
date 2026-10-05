@@ -6,6 +6,7 @@ import '../api.dart';
 import '../config.dart';
 import '../store.dart';
 import '../widgets.dart';
+import 'diagnostics.dart';
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
@@ -218,14 +219,25 @@ class ProfileTab extends StatelessWidget {
             onTap: () => _serverSettings(context),
           ),
           ListTile(
+            leading: const Icon(Icons.bug_report_outlined),
+            title: const Text('诊断'),
+            subtitle: const Text('通知 / 保活 / 连接状态自检 + 测试通知',
+                style: TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DiagnosticsScreen()),
+            ),
+          ),
+          ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('${AppConfig.appName} v1.1.0',
+            subtitle: const Text('${AppConfig.appName} v1.2.0',
                 style: TextStyle(fontSize: 12)),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: AppConfig.appName,
-              applicationVersion: '1.1.0',
+              applicationVersion: '1.2.0',
               children: const [
                 Text('一个轻量的实时聊天应用：私聊、群聊、炫圈、面对面扫码加好友。'),
               ],

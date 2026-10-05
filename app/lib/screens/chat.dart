@@ -108,6 +108,31 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _confirmRecall(Message m) async {
+    final s = context.read<AppState>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('撤回消息'),
+        content: const Text('确定要撤回这条消息吗？（对方将看到"已撤回"）'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('撤回')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await s.recallMessage(m.conversationId, m.id);
+    } on ApiException catch (e) {
+      if (mounted) showError(context, e.message);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
@@ -156,6 +181,12 @@ class _ChatScreenState extends State<ChatScreen> {
                             showTime: showTime,
                             isLastMine: i == 0 && m.senderId == me?.id,
                             othersRead: m.readBy.any((r) => r != me?.id),
+                            canRecall: m.senderId == me?.id &&
+                                !m.recalled &&
+                                DateTime.now().millisecondsSinceEpoch -
+                                        m.createdAt <
+                                    5 * 60 * 1000,
+                            onRecall: () => _confirmRecall(m),
                           );
                         },
                       ),
@@ -263,6 +294,8 @@ class _Bubble extends StatelessWidget {
   final bool showTime;
   final bool isLastMine;
   final bool othersRead;
+  final bool canRecall;
+  final VoidCallback? onRecall;
 
   const _Bubble({
     required this.message,
@@ -271,12 +304,28 @@ class _Bubble extends StatelessWidget {
     required this.showTime,
     required this.isLastMine,
     required this.othersRead,
+    this.canRecall = false,
+    this.onRecall,
   });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final senderName = message.sender?.displayName ?? '';
+
+    if (message.recalled) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Center(
+          child: Text(
+            isMine
+                ? '你撤回了一条消息'
+                : '${senderName.isEmpty ? '对方' : senderName} 撤回了一条消息',
+            style: TextStyle(color: Colors.grey.shade400, fontSize: 12.5),
+          ),
+        ),
+      );
+    }
 
     Widget content = message.isImage
         ? ClipRRect(
@@ -326,6 +375,13 @@ class _Bubble extends StatelessWidget {
             builder: (_) => ImageViewerScreen(url: message.content),
           ),
         ),
+        child: content,
+      );
+    }
+
+    if (canRecall && onRecall != null) {
+      content = GestureDetector(
+        onLongPress: onRecall,
         child: content,
       );
     }

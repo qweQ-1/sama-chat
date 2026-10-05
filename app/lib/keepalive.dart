@@ -3,6 +3,7 @@
 /// - iOS：循环播放静音音频，App 退到后台后不被挂起（局限：从后台划掉 App 后无效）
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_session/audio_session.dart';
@@ -37,7 +38,9 @@ class _NoopTaskHandler extends TaskHandler {
 
 class KeepAlive {
   static final AudioPlayer _player = AudioPlayer();
-  static bool _audioPlaying = false;
+  static bool _audioStarted = false;
+  static bool _interruptionHooked = false;
+  static Timer? _watchdog;
 
   static Future<void> start() async {
     if (Platform.isAndroid) {
@@ -48,6 +51,8 @@ class KeepAlive {
   }
 
   static Future<void> stop() async {
+    _watchdog?.cancel();
+    _watchdog = null;
     if (Platform.isAndroid) {
       try {
         await FlutterForegroundTask.stopService();
@@ -55,9 +60,19 @@ class KeepAlive {
     } else if (Platform.isIOS) {
       try {
         await _player.stop();
-        _audioPlaying = false;
       } catch (_) {}
+      _audioStarted = false;
     }
+  }
+
+  /// 诊断信息（显示在「诊断」页）。
+  static String get debugStatus {
+    if (Platform.isIOS) {
+      return _player.playing ? 'iOS 音频保活: 播放中 ✓' : 'iOS 音频保活: 未播放 ✗';
+    } else if (Platform.isAndroid) {
+      return 'Android 前台服务保活模式';
+    }
+    return '未知平台';
   }
 
   static Future<void> _startAndroid() async {
@@ -86,28 +101,71 @@ class KeepAlive {
   }
 
   static Future<void> _startIos() async {
-    if (_audioPlaying) return;
     try {
       final session = await AudioSession.instance;
-      await session.configure(AudioSessionConfiguration(
-        avAudioSessionCategory: AVAudioSessionCategory.playback,
-        avAudioSessionCategoryOptions:
-            AVAudioSessionCategoryOptions.mixWithOthers,
-        avAudioSessionMode: AVAudioSessionMode.defaultMode,
-        avAudioSessionRouteSharingPolicy:
-            AVAudioSessionRouteSharingPolicy.defaultPolicy,
-        avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
-        androidAudioAttributes: const AndroidAudioAttributes(
-          contentType: AndroidAudioContentType.music,
-          usage: AndroidAudioUsage.media,
-        ),
-        androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
-        androidWillPauseWhenDucked: false,
-      ));
-      await _player.setAsset('assets/silence.wav');
-      await _player.setLoopMode(LoopMode.one);
-      await _player.play();
-      _audioPlaying = true;
+      // 后台可播放的音频会话（首选混音，避免打断用户自己的音乐）
+      try {
+        await session.configure(AudioSessionConfiguration(
+          avAudioSessionCategory: AVAudioSessionCategory.playback,
+          avAudioSessionCategoryOptions:
+              AVAudioSessionCategoryOptions.mixWithOthers,
+          avAudioSessionMode: AVAudioSessionMode.defaultMode,
+          avAudioSessionRouteSharingPolicy:
+              AVAudioSessionRouteSharingPolicy.defaultPolicy,
+          avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+          androidAudioAttributes: const AndroidAudioAttributes(
+            contentType: AndroidAudioContentType.music,
+            usage: AndroidAudioUsage.media,
+          ),
+          androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+          androidWillPauseWhenDucked: false,
+        ));
+      } catch (_) {
+        try {
+          await session.configure(const AudioSessionConfiguration.music());
+        } catch (_) {}
+      }
+      try {
+        await session.setActive(true);
+      } catch (_) {}
+
+      if (!_audioStarted) {
+        await _player.setAsset('assets/silence.wav');
+        await _player.setLoopMode(LoopMode.one);
+        _audioStarted = true;
+      }
+      // 注意：play() 返回的 Future 会等播放结束才完成（循环音频永不结束），不能 await
+      unawaited(_player.play().catchError((Object _) {}));
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      if (!_player.playing) {
+        // 会话激活失败时重试一次
+        try {
+          await session.setActive(true);
+        } catch (_) {}
+        unawaited(_player.play().catchError((Object _) {}));
+      }
+
+      _hookInterruptions(session);
+
+      // 看门狗：每 45 秒检查一次，被系统暂停就自动恢复
+      _watchdog ??= Timer.periodic(const Duration(seconds: 45), (_) {
+        if (Platform.isIOS && !_player.playing) {
+          unawaited(_startIos());
+        }
+      });
+    } catch (_) {}
+  }
+
+  static void _hookInterruptions(AudioSession session) {
+    if (_interruptionHooked) return;
+    _interruptionHooked = true;
+    try {
+      session.interruptionEventStream.listen((event) {
+        if (!event.begin) {
+          // 中断结束（如电话挂断）后恢复播放
+          unawaited(_startIos());
+        }
+      });
     } catch (_) {}
   }
 }

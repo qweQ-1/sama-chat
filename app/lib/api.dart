@@ -170,6 +170,10 @@ class Api {
     return Message.fromJson((j['message'] as Map).cast<String, dynamic>());
   }
 
+  Future<void> recallMessage(String conversationId, String messageId) async {
+    await _req('POST', '/conversations/$conversationId/messages/$messageId/recall');
+  }
+
   Future<void> markRead(String conversationId) async {
     await _req('POST', '/conversations/$conversationId/read');
   }

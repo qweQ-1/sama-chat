@@ -122,5 +122,6 @@ void showError(BuildContext context, String message) {
 String previewOf(Message? m, String? myId) {
   if (m == null) return '';
   final who = (myId != null && m.senderId == myId) ? '我: ' : '';
+  if (m.recalled) return '$who[已撤回]';
   return m.isImage ? '$who[图片]' : '$who${m.content}';
 }

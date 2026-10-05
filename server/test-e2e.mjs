@@ -241,6 +241,77 @@ ok('不能撤回别人的消息', rec2.status === 403);
 const rec3 = await api('POST', `/conversations/${convId}/messages/${freshId}/recall`, { token: A });
 ok('重复撤回幂等', rec3.status === 200);
 
+console.log('\n== 10. 好友备注 ==');
+const rm1 = await api('PATCH', `/friends/${idB}`, { token: A, body: { remark: '好哥们' } });
+ok('设置备注成功', rm1.status === 200 && rm1.json?.remark === '好哥们');
+const fl1 = await api('GET', '/friends', { token: A });
+ok('好友列表带备注', fl1.json?.friends?.find((f) => f.id === idB)?.remark === '好哥们');
+const cvl = await api('GET', '/conversations', { token: A });
+const pcv = cvl.json?.conversations?.find(
+  (c) => c.type === 'private' && c.memberIds.includes(idB),
+);
+ok('私聊名称使用备注显示', pcv?.name === '好哥们');
+
+console.log('\n== 11. 群管理 ==');
+const rn1 = await api('PATCH', `/conversations/${grpId}`, { token: B, body: { name: '越权改名' } });
+ok('普通成员不能改群名', rn1.status === 403);
+const rn2 = await api('PATCH', `/conversations/${grpId}`, { token: A, body: { name: '测试群·改' } });
+ok('群主改群名成功', rn2.status === 200 && rn2.json?.conversation?.name === '测试群·改');
+const ad1 = await api('POST', `/conversations/${grpId}/admins`, { token: A, body: { userId: idB } });
+ok('群主设置管理员', ad1.status === 200 && ad1.json?.conversation?.adminIds?.includes(idB));
+const ad2 = await api('POST', `/conversations/${grpId}/admins`, { token: B, body: { userId: idC } });
+ok('管理员不能任命管理员', ad2.status === 403);
+const mu1 = await api('POST', `/conversations/${grpId}/mute`, { token: B, body: { userId: idC, minutes: 10 } });
+ok('管理员禁言成员', mu1.status === 200);
+const cSend1 = await api('POST', `/conversations/${grpId}/messages`, { token: C, body: { content: '我被禁言了？' } });
+ok('被禁言成员发消息被拒', cSend1.status === 403);
+const mu2 = await api('POST', `/conversations/${grpId}/mute`, { token: B, body: { userId: idC, minutes: 0 } });
+ok('解除禁言', mu2.status === 200);
+const cSend2 = await api('POST', `/conversations/${grpId}/messages`, { token: C, body: { content: '能发了' } });
+ok('解除后可发言', cSend2.status === 200);
+const mu3 = await api('POST', `/conversations/${grpId}/mute`, { token: B, body: { userId: idA, minutes: 10 } });
+ok('管理员不能禁言群主', mu3.status === 403);
+const kk1 = await api('POST', `/conversations/${grpId}/kick`, { token: B, body: { userId: idC } });
+ok('管理员踢出成员', kk1.status === 200 && !kk1.json?.conversation?.memberIds?.includes(idC));
+const cSend3 = await api('POST', `/conversations/${grpId}/messages`, { token: C, body: { content: '还在吗' } });
+ok('被踢出后不能发言', cSend3.status === 404);
+const tr1 = await api('POST', `/conversations/${grpId}/transfer`, { token: A, body: { userId: idB } });
+ok('转交群主成功', tr1.status === 200 && tr1.json?.conversation?.ownerId === idB);
+const tr2 = await api('POST', `/conversations/${grpId}/transfer`, { token: B, body: { userId: idA } });
+ok('30 天内不能再次转交', tr2.status === 400);
+const mem1 = await api('GET', `/conversations/${grpId}/members`, { token: A });
+ok('成员角色正确（bob=群主, alice=管理员）',
+  mem1.json?.members?.some((m) => m.id === idB && m.role === 'owner') &&
+  mem1.json?.members?.some((m) => m.id === idA && m.role === 'admin'));
+
+console.log('\n== 12. 删除好友 / 黑名单 ==');
+const del1 = await api('DELETE', `/friends/${idB}`, { token: A });
+ok('删除好友', del1.status === 200);
+const flA2 = await api('GET', '/friends', { token: A });
+const flB2 = await api('GET', '/friends', { token: B });
+ok('双方好友列表都已移除',
+  !flA2.json?.friends?.some((f) => f.id === idB) &&
+  !flB2.json?.friends?.some((f) => f.id === idA));
+await api('POST', '/friends/request', { token: C, body: { userId: idA } });
+const rqA = await api('GET', '/friends/requests', { token: A });
+const fromCarol = rqA.json?.incoming?.find((r) => r.fromId === idC);
+await api('POST', '/friends/respond', { token: A, body: { requestId: fromCarol.id, accept: true } });
+const blk1 = await api('POST', '/blocks', { token: A, body: { userId: idC } });
+ok('拉黑成功', blk1.status === 200);
+const flA3 = await api('GET', '/friends', { token: A });
+ok('拉黑后从好友列表移除', !flA3.json?.friends?.some((f) => f.id === idC));
+const cvCA = await api('POST', '/conversations/private', { token: C, body: { userId: idA } });
+const cvCAId = cvCA.json?.conversation?.id;
+const cB1 = await api('POST', `/conversations/${cvCAId}/messages`, { token: C, body: { content: '在吗' } });
+ok('被拉黑者发消息被拒收', cB1.status === 403);
+const cB2 = await api('POST', '/friends/request', { token: C, body: { userId: idA } });
+ok('被拉黑者加好友被拒', cB2.status === 403);
+const bl1 = await api('GET', '/blocks', { token: A });
+ok('黑名单列表可见', bl1.json?.blocks?.some((u) => u.id === idC));
+await api('DELETE', `/blocks/${idC}`, { token: A });
+const cB3 = await api('POST', '/friends/request', { token: C, body: { userId: idA } });
+ok('解除后可重新申请好友', cB3.status === 200);
+
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 
 console.log(`\n===== RESULT: ${pass} passed, ${fail} failed =====`);

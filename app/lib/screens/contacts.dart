@@ -26,6 +26,152 @@ class ContactsTab extends StatelessWidget {
     }
   }
 
+  void _friendSheet(BuildContext context, User f) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline),
+              title: const Text('发消息'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openChat(context, f);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('设置备注'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _editRemark(context, f);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_remove_outlined),
+              title: const Text('删除好友'),
+              textColor: Colors.redAccent,
+              iconColor: Colors.redAccent,
+              onTap: () {
+                Navigator.pop(ctx);
+                _deleteFriend(context, f);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.block),
+              title: const Text('加入黑名单'),
+              textColor: Colors.redAccent,
+              iconColor: Colors.redAccent,
+              onTap: () {
+                Navigator.pop(ctx);
+                _blockFriend(context, f);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editRemark(BuildContext context, User f) async {
+    final s = context.read<AppState>();
+    final controller = TextEditingController(text: f.remark);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('设置备注（${f.displayName}）'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 32,
+          decoration: const InputDecoration(
+            hintText: '留空则恢复显示原昵称',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (value == null) return;
+    try {
+      await s.api.setFriendRemark(f.id, value);
+      await s.refreshFriends();
+      await s.refreshConversations();
+      if (context.mounted) showError(context, '备注已更新 ✓');
+    } on ApiException catch (e) {
+      if (context.mounted) showError(context, e.message);
+    }
+  }
+
+  Future<void> _deleteFriend(BuildContext context, User f) async {
+    final s = context.read<AppState>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除好友'),
+        content: Text('确定删除「${f.shownName}」吗？\n（双方好友列表都会移除）'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await s.api.deleteFriend(f.id);
+      await s.refreshFriends();
+      await s.refreshConversations();
+    } on ApiException catch (e) {
+      if (context.mounted) showError(context, e.message);
+    }
+  }
+
+  Future<void> _blockFriend(BuildContext context, User f) async {
+    final s = context.read<AppState>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('加入黑名单'),
+        content: Text(
+            '将「${f.shownName}」加入黑名单？\n对方将无法给你发消息、加好友，且好友关系会解除。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('拉黑'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await s.api.blockUser(f.id);
+      await s.refreshFriends();
+      await s.refreshConversations();
+      if (context.mounted) showError(context, '已加入黑名单');
+    } on ApiException catch (e) {
+      if (context.mounted) showError(context, e.message);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
@@ -134,10 +280,17 @@ class ContactsTab extends StatelessWidget {
                         ),
                     ],
                   ),
-                  title: Text(f.displayName),
-                  subtitle: Text('@${f.username}',
+                  title: Text(f.shownName),
+                  subtitle: Text(
+                      f.remark.isNotEmpty
+                          ? '${f.displayName} · @${f.username}'
+                          : '@${f.username}',
                       style: TextStyle(
                           color: Colors.grey.shade500, fontSize: 12)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.more_horiz),
+                    onPressed: () => _friendSheet(context, f),
+                  ),
                   onTap: () => _openChat(context, f),
                 );
               }),

@@ -25,6 +25,8 @@ class Api {
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
+        // 保险：ngrok 免费版对"浏览器特征"的请求会弹警告页，带上这个头可跳过
+        'ngrok-skip-browser-warning': '1',
         if (token != null) 'Authorization': 'Bearer $token',
       };
 
@@ -134,6 +136,29 @@ class Api {
     await _req('POST', '/friends/respond', body: {'requestId': requestId, 'accept': accept});
   }
 
+  Future<void> deleteFriend(String userId) async {
+    await _req('DELETE', '/friends/$userId');
+  }
+
+  Future<void> setFriendRemark(String userId, String remark) async {
+    await _req('PATCH', '/friends/$userId', body: {'remark': remark});
+  }
+
+  Future<List<User>> blocks() async {
+    final j = await _req('GET', '/blocks');
+    return (j['blocks'] as List)
+        .map((e) => User.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  Future<void> blockUser(String userId) async {
+    await _req('POST', '/blocks', body: {'userId': userId});
+  }
+
+  Future<void> unblockUser(String userId) async {
+    await _req('DELETE', '/blocks/$userId');
+  }
+
   // ---------- conversations ----------
   Future<List<Conversation>> conversations() async {
     final j = await _req('GET', '/conversations');
@@ -155,6 +180,45 @@ class Api {
   Future<Conversation> addGroupMembers(String conversationId, List<String> memberIds) async {
     final j = await _req('POST', '/conversations/$conversationId/members', body: {'memberIds': memberIds});
     return Conversation.fromJson((j['conversation'] as Map).cast<String, dynamic>());
+  }
+
+  Future<Conversation> renameGroup(String conversationId, String name) async {
+    final j = await _req('PATCH', '/conversations/$conversationId', body: {'name': name});
+    return Conversation.fromJson((j['conversation'] as Map).cast<String, dynamic>());
+  }
+
+  Future<Conversation> setGroupAdmin(String conversationId, String userId,
+      {bool remove = false}) async {
+    final j = await _req('POST', '/conversations/$conversationId/admins',
+        body: {'userId': userId, 'remove': remove});
+    return Conversation.fromJson((j['conversation'] as Map).cast<String, dynamic>());
+  }
+
+  Future<Conversation> muteMember(String conversationId, String userId, int minutes) async {
+    final j = await _req('POST', '/conversations/$conversationId/mute',
+        body: {'userId': userId, 'minutes': minutes});
+    return Conversation.fromJson((j['conversation'] as Map).cast<String, dynamic>());
+  }
+
+  Future<Conversation> kickMember(String conversationId, String userId) async {
+    final j = await _req('POST', '/conversations/$conversationId/kick',
+        body: {'userId': userId});
+    return Conversation.fromJson((j['conversation'] as Map).cast<String, dynamic>());
+  }
+
+  Future<Conversation> transferOwner(String conversationId, String userId) async {
+    final j = await _req('POST', '/conversations/$conversationId/transfer',
+        body: {'userId': userId});
+    return Conversation.fromJson((j['conversation'] as Map).cast<String, dynamic>());
+  }
+
+  Future<(Conversation, List<GroupMember>)> groupMembers(String conversationId) async {
+    final j = await _req('GET', '/conversations/$conversationId/members');
+    final conv = Conversation.fromJson((j['conversation'] as Map).cast<String, dynamic>());
+    final members = (j['members'] as List)
+        .map((e) => GroupMember.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+    return (conv, members);
   }
 
   Future<List<Message>> messages(String conversationId, {int limit = 100}) async {

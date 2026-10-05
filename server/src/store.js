@@ -10,14 +10,24 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const defaultData = {
   users: [],        // {id, username, displayName, passwordHash, avatar, createdAt}
-  friends: [],      // {id, userId, friendId, createdAt}  (mutual, stored both ways)
+  friends: [],      // {id, userId, friendId, remark, createdAt}  (mutual, stored both ways)
   friendRequests: [], // {id, fromId, toId, status: pending|accepted|rejected, createdAt}
-  conversations: [], // {id, type: 'private'|'group', name?, memberIds[], ownerId?, createdAt}
+  conversations: [], // {id, type, name?, memberIds[], ownerId?, adminIds[], mutes{}, lastTransferAt?, createdAt}
   messages: [],     // {id, conversationId, senderId, type, content, createdAt, readBy[]}
   moments: [],      // {id, authorId, text, images[], createdAt, likes[], comments[]}
+  blocks: [],       // {id, userId, blockedId, createdAt}  用户 userId 拉黑了 blockedId
 };
 
 export const db = await JSONFilePreset(path.join(DATA_DIR, 'db.json'), defaultData);
+
+// 兼容旧数据库：补齐新增字段（老数据升级用）
+for (const f of db.data.friends) f.remark ??= '';
+for (const c of db.data.conversations) {
+  c.adminIds ??= [];
+  c.mutes ??= {};
+  c.lastTransferAt ??= 0;
+}
+db.data.blocks ??= [];
 
 export const newId = (prefix = '') => (prefix ? `${prefix}_` : '') + nanoid(12);
 export const now = () => Date.now();
@@ -46,6 +56,47 @@ export function findUserByUsername(username) {
 /** Are these two users friends? Friendship is stored symmetrically. */
 export function areFriends(a, b) {
   return db.data.friends.some((f) => f.userId === a && f.friendId === b);
+}
+
+/** 查询好友记录（含备注）。 */
+export function friendRecord(userId, friendId) {
+  return (
+    db.data.friends.find((f) => f.userId === userId && f.friendId === friendId) ?? null
+  );
+}
+
+/** 解除双方好友关系。 */
+export function removeFriendship(a, b) {
+  db.data.friends = db.data.friends.filter(
+    (f) =>
+      !(
+        (f.userId === a && f.friendId === b) ||
+        (f.userId === b && f.friendId === a)
+      ),
+  );
+}
+
+/** userId 是否拉黑了 targetId。 */
+export function isBlocked(userId, targetId) {
+  return db.data.blocks.some((b) => b.userId === userId && b.blockedId === targetId);
+}
+
+export function blockIdsOf(userId) {
+  return db.data.blocks.filter((b) => b.userId === userId).map((b) => b.blockedId);
+}
+
+/** 发送消息前的校验：返回错误文案，或 null 表示可发。 */
+export function conversationSendBlock(conv, userId) {
+  if (conv.type === 'group') {
+    const muted = (conv.mutes ?? {})[userId];
+    if (muted !== undefined && (muted < 0 || Date.now() < muted)) {
+      return '你已被禁言';
+    }
+  } else {
+    const peer = conv.memberIds.find((m) => m !== userId);
+    if (peer && isBlocked(peer, userId)) return '对方拒收了你的消息';
+  }
+  return null;
 }
 
 export function friendIdsOf(userId) {

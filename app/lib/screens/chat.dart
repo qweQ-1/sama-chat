@@ -8,6 +8,7 @@ import '../api.dart';
 import '../models.dart';
 import '../store.dart';
 import '../widgets.dart';
+import 'group_info.dart';
 
 class ChatScreen extends StatefulWidget {
   final Conversation conversation;
@@ -27,6 +28,9 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _sendingImage = false;
 
   String get convId => widget.conversation.id;
+
+  /// 已播过入场动画的消息 id（避免列表复用时重复播放）
+  final Set<String> _animatedOnce = {};
 
   @override
   void initState() {
@@ -108,6 +112,14 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// 拿最新的会话数据（群名/人数可能已被修改）
+  Conversation _currentConv(AppState s) {
+    return s.conversations.firstWhere(
+      (c) => c.id == widget.conversation.id,
+      orElse: () => widget.conversation,
+    );
+  }
+
   Future<void> _confirmRecall(Message m) async {
     final s = context.read<AppState>();
     final ok = await showDialog<bool>(
@@ -145,16 +157,34 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          children: [
-            Text(
-              widget.conversation.name,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            if (widget.conversation.isGroup)
-              Text('共 ${widget.conversation.memberCount} 人',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-          ],
+        title: InkWell(
+          onTap: widget.conversation.isGroup
+              ? () async {
+                  final conv = _currentConv(s);
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => GroupInfoScreen(conversation: conv),
+                    ),
+                  );
+                  if (mounted) {
+                    s.refreshConversations();
+                  }
+                }
+              : null,
+          child: Column(
+            children: [
+              Text(
+                _currentConv(s).name,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              if (widget.conversation.isGroup)
+                Text('共 ${_currentConv(s).memberCount} 人',
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+            ],
+          ),
         ),
       ),
       body: Column(
@@ -174,32 +204,46 @@ class _ChatScreenState extends State<ChatScreen> {
                           final older = i + 1 < msgs.length ? msgs[i + 1] : null;
                           final showTime = older == null ||
                               m.createdAt - older.createdAt > 5 * 60 * 1000;
-                          return _Bubble(
-                            message: m,
-                            isMine: m.senderId == me?.id,
-                            isGroup: widget.conversation.isGroup,
-                            showTime: showTime,
-                            isLastMine: i == 0 && m.senderId == me?.id,
-                            othersRead: m.readBy.any((r) => r != me?.id),
-                            canRecall: m.senderId == me?.id &&
-                                !m.recalled &&
-                                DateTime.now().millisecondsSinceEpoch -
-                                        m.createdAt <
-                                    5 * 60 * 1000,
-                            onRecall: () => _confirmRecall(m),
+                          final isFresh = !_animatedOnce.contains(m.id) &&
+                              DateTime.now().millisecondsSinceEpoch -
+                                      m.createdAt <
+                                  3000;
+                          if (isFresh) _animatedOnce.add(m.id);
+                          return AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            switchInCurve: Curves.easeOut,
+                            transitionBuilder: (child, anim) =>
+                                FadeTransition(opacity: anim, child: child),
+                            child: _AnimatedAppear(
+                              key: ValueKey('${m.id}-${m.recalled}'),
+                              play: isFresh,
+                              child: _Bubble(
+                                message: m,
+                                isMine: m.senderId == me?.id,
+                                isGroup: widget.conversation.isGroup,
+                                showTime: showTime,
+                                isLastMine: i == 0 && m.senderId == me?.id,
+                                othersRead: m.readBy.any((r) => r != me?.id),
+                                canRecall: m.senderId == me?.id &&
+                                    !m.recalled &&
+                                    !m.pending &&
+                                    !m.failed &&
+                                    DateTime.now().millisecondsSinceEpoch -
+                                            m.createdAt <
+                                        5 * 60 * 1000,
+                                onRecall: () => _confirmRecall(m),
+                              ),
+                            ),
                           );
                         },
                       ),
           ),
           if (typers.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(left: 20, bottom: 4),
+            const Padding(
+              padding: EdgeInsets.only(left: 20, bottom: 4),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(
-                  '对方正在输入…',
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                ),
+                child: _TypingDots(),
               ),
             ),
           _InputBar(
@@ -427,7 +471,20 @@ class _Bubble extends StatelessWidget {
                         ),
                       ),
                     content,
-                    if (isMine && isLastMine && othersRead)
+                    if (isMine && (message.pending || message.failed))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3, right: 2),
+                        child: Icon(
+                          message.failed
+                              ? Icons.error_outline
+                              : Icons.access_time,
+                          size: 11,
+                          color: message.failed
+                              ? Colors.redAccent
+                              : Colors.grey.shade400,
+                        ),
+                      )
+                    else if (isMine && isLastMine && othersRead)
                       Padding(
                         padding: const EdgeInsets.only(top: 3, right: 2),
                         child: Text(
@@ -441,6 +498,92 @@ class _Bubble extends StatelessWidget {
               ),
               if (isMine) const SizedBox(width: 4),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 新消息入场动画（淡入 + 轻微上滑），仅新消息播放一次。
+class _AnimatedAppear extends StatelessWidget {
+  final bool play;
+  final Widget child;
+
+  const _AnimatedAppear({super.key, required this.play, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!play) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      builder: (context, v, c) => Opacity(
+        opacity: v,
+        child: Transform.translate(
+          offset: Offset(0, (1 - v) * 12),
+          child: c,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// "对方正在输入" 的三个跳动小点。
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '对方正在输入',
+          style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+        ),
+        const SizedBox(width: 4),
+        AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) => Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (i) {
+              final raw = (_c.value * 3 - i) % 3;
+              final v = raw < 1 ? raw : (raw < 2 ? 2 - raw : 0.0);
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                child: Opacity(
+                  opacity: 0.25 + 0.75 * v,
+                  child: Container(
+                    width: 4,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade500,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              );
+            }),
           ),
         ),
       ],

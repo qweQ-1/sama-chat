@@ -288,6 +288,9 @@ class AppState extends ChangeNotifier {
           ));
         }
         unawaited(refreshRequests());
+      case 'friend:removed':
+        unawaited(refreshFriends());
+        unawaited(refreshConversations());
       case 'friend:accepted':
         unawaited(refreshFriends());
         unawaited(refreshRequests());
@@ -302,14 +305,33 @@ class AppState extends ChangeNotifier {
   void _appendMessage(Message msg) {
     final list = chatMessages.putIfAbsent(msg.conversationId, () => []);
     if (list.any((m) => m.id == msg.id)) return; // dedupe REST echo
+
+    // 服务器回显替换本地乐观消息（同发送者、同内容、短时间内）
+    final tIdx = list.indexWhere((m) =>
+        m.id.startsWith('tmp_') &&
+        m.pending &&
+        m.senderId == msg.senderId &&
+        m.content == msg.content &&
+        (msg.createdAt - m.createdAt).abs() < 60000);
+    if (tIdx >= 0) {
+      list[tIdx] = msg;
+      _updatePreview(msg.conversationId, msg);
+      notifyListeners();
+      return;
+    }
+
     list.add(msg);
     lastMessageAt = DateTime.now();
+    _updatePreview(msg.conversationId, msg);
+    notifyListeners();
+  }
 
-    final idx = conversations.indexWhere((c) => c.id == msg.conversationId);
+  void _updatePreview(String conversationId, Message msg) {
+    final idx = conversations.indexWhere((c) => c.id == conversationId);
     if (idx >= 0) {
       final c = conversations[idx];
       final isMine = msg.senderId == me?.id;
-      final isActive = activeChatId == msg.conversationId;
+      final isActive = activeChatId == conversationId;
       conversations[idx] = c.copyWith(
         lastMessage: msg,
         unread: isMine || isActive ? c.unread : c.unread + 1,
@@ -318,7 +340,6 @@ class AppState extends ChangeNotifier {
     } else {
       unawaited(refreshConversations());
     }
-    notifyListeners();
   }
 
   void _sortConversations() {
@@ -375,10 +396,53 @@ class AppState extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------- talking
-  Future<Message> sendText(String conversationId, String text) async {
-    final msg = await api.sendMessage(conversationId, text: text);
-    _appendMessage(msg);
-    return msg;
+  /// 发送文字：先本地立即上屏（乐观更新），服务器确认后替换为正式消息。
+  Future<void> sendText(String conversationId, String text) async {
+    final meId = me?.id ?? '';
+    final temp = Message(
+      id: 'tmp_${DateTime.now().microsecondsSinceEpoch}',
+      conversationId: conversationId,
+      senderId: meId,
+      type: 'text',
+      content: text,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+      readBy: [meId],
+      sender: me,
+      pending: true,
+    );
+    _appendMessage(temp);
+    try {
+      final msg = await api.sendMessage(conversationId, text: text);
+      _replaceLocal(temp.id, msg);
+    } catch (_) {
+      _markFailed(temp.id);
+      rethrow;
+    }
+  }
+
+  void _replaceLocal(String tempId, Message real) {
+    final list = chatMessages[real.conversationId];
+    if (list != null) {
+      final idx = list.indexWhere((m) => m.id == tempId);
+      if (idx >= 0) {
+        list[idx] = real;
+      } else if (!list.any((m) => m.id == real.id)) {
+        list.add(real);
+      }
+    }
+    _updatePreview(real.conversationId, real);
+    notifyListeners();
+  }
+
+  void _markFailed(String tempId) {
+    for (final list in chatMessages.values) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id == tempId) {
+          list[i] = list[i].copyWith(pending: false, failed: true);
+        }
+      }
+    }
+    notifyListeners();
   }
 
   Future<Message> sendImage(String conversationId, Uint8List bytes, String ext) async {

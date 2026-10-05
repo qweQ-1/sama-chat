@@ -8,6 +8,7 @@ import {
   publicUser,
   findUserById,
   conversationsOf,
+  conversationSendBlock,
   save,
 } from './store.js';
 
@@ -100,6 +101,9 @@ export function createIo(app) {
     if (event === 'message:send') {
       const conv = db.data.conversations.find((c) => c.id === data?.conversationId);
       if (!conv || !conv.memberIds.includes(userId)) return;
+
+      // 禁言 / 黑名单校验
+      if (conversationSendBlock(conv, userId)) return;
 
       const message = {
         id: newId('m'),

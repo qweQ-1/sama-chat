@@ -6,19 +6,25 @@ class User {
   final String username;
   final String displayName;
   final String? avatar;
+  final String remark; // 好友备注（仅好友列表返回）
 
   User({
     required this.id,
     required this.username,
     required this.displayName,
     this.avatar,
+    this.remark = '',
   });
+
+  /// 显示名：有备注优先用备注
+  String get shownName => remark.isNotEmpty ? remark : displayName;
 
   factory User.fromJson(Map<String, dynamic> j) => User(
         id: j['id'] as String,
         username: j['username'] as String? ?? '',
         displayName: j['displayName'] as String? ?? j['username'] as String? ?? '',
         avatar: j['avatar'] as String?,
+        remark: j['remark'] as String? ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -39,6 +45,8 @@ class Message {
   final List<String> readBy;
   final User? sender;
   final bool recalled;
+  final bool pending; // 本地乐观消息（还没被服务器确认）
+  final bool failed;  // 发送失败
 
   Message({
     required this.id,
@@ -50,6 +58,8 @@ class Message {
     required this.readBy,
     this.sender,
     this.recalled = false,
+    this.pending = false,
+    this.failed = false,
   });
 
   bool get isImage => type == 'image';
@@ -69,7 +79,8 @@ class Message {
         recalled: j['recalled'] as bool? ?? false,
       );
 
-  Message copyWith({String? content, bool? recalled}) => Message(
+  Message copyWith({String? content, bool? recalled, bool? pending, bool? failed}) =>
+      Message(
         id: id,
         conversationId: conversationId,
         senderId: senderId,
@@ -79,6 +90,8 @@ class Message {
         readBy: readBy,
         sender: sender,
         recalled: recalled ?? this.recalled,
+        pending: pending ?? this.pending,
+        failed: failed ?? this.failed,
       );
 }
 
@@ -90,6 +103,9 @@ class Conversation {
   final int memberCount;
   final Message? lastMessage;
   final int unread;
+  final String? ownerId;
+  final List<String> adminIds;
+  final Map<String, int> mutes;
 
   Conversation({
     required this.id,
@@ -99,9 +115,17 @@ class Conversation {
     required this.memberCount,
     this.lastMessage,
     this.unread = 0,
+    this.ownerId,
+    this.adminIds = const [],
+    this.mutes = const {},
   });
 
   bool get isGroup => type == 'group';
+
+  bool canManage(String? myId) =>
+      isGroup && myId != null && (ownerId == myId || adminIds.contains(myId));
+
+  bool isOwner(String? myId) => isGroup && ownerId != null && ownerId == myId;
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
         id: j['id'] as String,
@@ -114,6 +138,13 @@ class Conversation {
             ? Message.fromJson((j['lastMessage'] as Map).cast<String, dynamic>())
             : null,
         unread: (j['unread'] as num?)?.toInt() ?? 0,
+        ownerId: j['ownerId'] as String?,
+        adminIds:
+            (j['adminIds'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+        mutes: (j['mutes'] as Map?)?.map(
+              (k, v) => MapEntry(k.toString(), (v as num).toInt()),
+            ) ??
+            const {},
       );
 
   Conversation copyWith({Message? lastMessage, int? unread}) => Conversation(
@@ -124,6 +155,33 @@ class Conversation {
         memberCount: memberCount,
         lastMessage: lastMessage ?? this.lastMessage,
         unread: unread ?? this.unread,
+        ownerId: ownerId,
+        adminIds: adminIds,
+        mutes: mutes,
+      );
+}
+
+/// 群成员（含角色与禁言状态）
+class GroupMember {
+  final User user;
+  final String role; // owner | admin | member
+  final int mutedUntil; // 0=未禁言, -1=永久, >0=时间戳
+
+  GroupMember({required this.user, required this.role, required this.mutedUntil});
+
+  bool get isOwner => role == 'owner';
+  bool get isAdmin => role == 'admin';
+
+  bool get muted {
+    if (mutedUntil == 0) return false;
+    if (mutedUntil < 0) return true;
+    return DateTime.now().millisecondsSinceEpoch < mutedUntil;
+  }
+
+  factory GroupMember.fromJson(Map<String, dynamic> j) => GroupMember(
+        user: User.fromJson(j),
+        role: j['role'] as String? ?? 'member',
+        mutedUntil: (j['mutedUntil'] as num?)?.toInt() ?? 0,
       );
 }
 

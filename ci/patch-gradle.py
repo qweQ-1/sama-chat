@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""CI 用：为 flutter_local_notifications 开启 core library desugaring。
-兼容 Kotlin DSL (build.gradle.kts) 与 Groovy DSL (build.gradle)。"""
+"""CI 用构建补丁：
+1. 为 flutter_local_notifications 开启 core library desugaring
+2. 使用固定签名密钥（ci/sama-release.keystore），保证所有版本签名一致、可覆盖升级
+兼容 Kotlin DSL (build.gradle.kts) 与 Groovy DSL (build.gradle)。
+"""
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -8,11 +11,16 @@ KTS = os.path.join(ROOT, 'app', 'android', 'app', 'build.gradle.kts')
 GROOVY = os.path.join(ROOT, 'app', 'android', 'app', 'build.gradle')
 
 DESUGAR_VERSION = '2.1.4'
+KEYSTORE = '../../../ci/sama-release.keystore'
+KS_PASS = 'samachat123'
+KS_ALIAS = 'sama-chat'
 
 
 def patch_kts(path):
     s = open(path).read()
     changed = False
+
+    # --- desugaring ---
     if 'isCoreLibraryDesugaringEnabled' not in s:
         if 'compileOptions {' in s:
             s = s.replace(
@@ -30,6 +38,34 @@ def patch_kts(path):
             '}\n'
         )
         changed = True
+
+    # --- 固定签名 ---
+    if 'samarelease' not in s:
+        signing_block = (
+            'signingConfigs {\n'
+            '        create("samarelease") {\n'
+            f'            storeFile = file("{KEYSTORE}")\n'
+            f'            storePassword = "{KS_PASS}"\n'
+            f'            keyAlias = "{KS_ALIAS}"\n'
+            f'            keyPassword = "{KS_PASS}"\n'
+            '            storeType = "PKCS12"\n'
+            '        }\n'
+            '    }\n\n'
+            '    buildTypes {'
+        )
+        idx = s.find('buildTypes {')
+        if idx != -1:
+            s = s[:idx] + signing_block + s[idx + len('buildTypes {'):]
+            changed = True
+        else:
+            print('WARN: buildTypes { not found in', path)
+        if 'signingConfig = signingConfigs.getByName("debug")' in s:
+            s = s.replace(
+                'signingConfig = signingConfigs.getByName("debug")',
+                'signingConfig = signingConfigs.getByName("samarelease")',
+            )
+            changed = True
+
     if changed:
         open(path, 'w').write(s)
     print(('patched: ' if changed else 'already ok: ') + path)
@@ -38,6 +74,8 @@ def patch_kts(path):
 def patch_groovy(path):
     s = open(path).read()
     changed = False
+
+    # --- desugaring ---
     if 'coreLibraryDesugaringEnabled' not in s:
         if 'compileOptions {' in s:
             s = s.replace(
@@ -55,6 +93,34 @@ def patch_groovy(path):
             '}\n'
         )
         changed = True
+
+    # --- 固定签名 ---
+    if 'samarelease' not in s:
+        signing_block = (
+            'signingConfigs {\n'
+            '        samarelease {\n'
+            f'            storeFile file("{KEYSTORE}")\n'
+            f'            storePassword "{KS_PASS}"\n'
+            f'            keyAlias "{KS_ALIAS}"\n'
+            f'            keyPassword "{KS_PASS}"\n'
+            '            storeType "PKCS12"\n'
+            '        }\n'
+            '    }\n\n'
+            '    buildTypes {'
+        )
+        idx = s.find('buildTypes {')
+        if idx != -1:
+            s = s[:idx] + signing_block + s[idx + len('buildTypes {'):]
+            changed = True
+        else:
+            print('WARN: buildTypes { not found in', path)
+        if 'signingConfig signingConfigs.debug' in s:
+            s = s.replace(
+                'signingConfig signingConfigs.debug',
+                'signingConfig signingConfigs.samarelease',
+            )
+            changed = True
+
     if changed:
         open(path, 'w').write(s)
     print(('patched: ' if changed else 'already ok: ') + path)

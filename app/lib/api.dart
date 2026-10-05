@@ -255,6 +255,8 @@ class Api {
     final j = await _req('GET', '/health', auth: false);
     return (j['time'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch;
   }
+
+  Future<Moment> postMoment(String text, List<String> images) async {
     final j = await _req('POST', '/moments', body: {'text': text, 'images': images});
     return Moment.fromJson((j['moment'] as Map).cast<String, dynamic>());
   }

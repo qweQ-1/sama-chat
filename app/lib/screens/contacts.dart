@@ -148,7 +148,7 @@ class ContactsTab extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('加入黑名单'),
         content: Text(
-            '将「${f.shownName}」加入黑名单？\n对方将无法给你发消息、加好友，且好友关系会解除。'),
+            '将「${f.shownName}」加入黑名单？\n对方将无法给你发消息，互相看不到炫圈动态。\n（好友关系保留，解除黑名单后立即恢复正常）'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),

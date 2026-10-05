@@ -299,7 +299,7 @@ await api('POST', '/friends/respond', { token: A, body: { requestId: fromCarol.i
 const blk1 = await api('POST', '/blocks', { token: A, body: { userId: idC } });
 ok('拉黑成功', blk1.status === 200);
 const flA3 = await api('GET', '/friends', { token: A });
-ok('拉黑后从好友列表移除', !flA3.json?.friends?.some((f) => f.id === idC));
+ok('拉黑后好友关系保留', flA3.json?.friends?.some((f) => f.id === idC));
 const cvCA = await api('POST', '/conversations/private', { token: C, body: { userId: idA } });
 const cvCAId = cvCA.json?.conversation?.id;
 const cB1 = await api('POST', `/conversations/${cvCAId}/messages`, { token: C, body: { content: '在吗' } });
@@ -308,9 +308,16 @@ const cB2 = await api('POST', '/friends/request', { token: C, body: { userId: id
 ok('被拉黑者加好友被拒', cB2.status === 403);
 const bl1 = await api('GET', '/blocks', { token: A });
 ok('黑名单列表可见', bl1.json?.blocks?.some((u) => u.id === idC));
+const mCarol = await api('POST', '/moments', { token: C, body: { text: 'carol 的测试动态' } });
+const feedA1 = await api('GET', '/moments', { token: A });
+ok('拉黑后看不到对方炫圈', !feedA1.json?.moments?.some((m) => m.id === mCarol.json?.moment?.id));
+const feedC1 = await api('GET', '/moments', { token: C });
+ok('（反向）也看不到对方的炫圈', !feedC1.json?.moments?.some((m) => m.authorId === idA));
 await api('DELETE', `/blocks/${idC}`, { token: A });
-const cB3 = await api('POST', '/friends/request', { token: C, body: { userId: idA } });
-ok('解除后可重新申请好友', cB3.status === 200);
+const cB4 = await api('POST', `/conversations/${cvCAId}/messages`, { token: C, body: { content: '解除后发送' } });
+ok('解除后可以正常发消息', cB4.status === 200);
+const flA4 = await api('GET', '/friends', { token: A });
+ok('解除后好友仍在列表', flA4.json?.friends?.some((f) => f.id === idC));
 
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 

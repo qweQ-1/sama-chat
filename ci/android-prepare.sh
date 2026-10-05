@@ -35,6 +35,11 @@ if [ -f "$MANIFEST" ]; then
     sed -i 's|</application>|        <service android:name="com.pravera.flutter_foreground_task.service.ForegroundService" android:foregroundServiceType="dataSync" android:exported="false" tools:replace="android:foregroundServiceType" />\n    </application>|' "$MANIFEST"
   fi
 
+  # 应用内更新：允许拉起 APK 安装器
+  if ! grep -q 'REQUEST_INSTALL_PACKAGES' "$MANIFEST"; then
+    sed -i 's|<manifest\([^>]*\)>|<manifest\1>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>|' "$MANIFEST"
+  fi
+
   echo "--- manifest network config ---"
   grep -o 'android.permission.INTERNET\|POST_NOTIFICATIONS\|ForegroundService' "$MANIFEST" || true
 fi

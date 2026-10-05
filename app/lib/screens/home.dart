@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../store.dart';
+import '../updater.dart';
 import 'chats.dart';
 import 'contacts.dart';
 import 'moments.dart';
@@ -29,6 +30,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     context.read<AppState>().handleResume();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoCheckUpdate());
+  }
+
+  Future<void> _maybeAutoCheckUpdate() async {
+    try {
+      if (!await Updater.shouldAutoCheck()) return;
+      final info = await Updater.check();
+      if (info != null && mounted) {
+        await showUpdateDialog(context, info);
+      }
+    } catch (_) {}
   }
 
   @override

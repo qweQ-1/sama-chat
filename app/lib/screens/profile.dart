@@ -8,6 +8,7 @@ import '../store.dart';
 import '../widgets.dart';
 import 'diagnostics.dart';
 import 'blocklist.dart';
+import '../updater.dart';
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
@@ -241,14 +242,31 @@ class ProfileTab extends StatelessWidget {
             ),
           ),
           ListTile(
+            leading: const Icon(Icons.system_update_alt),
+            title: const Text('检查更新'),
+            subtitle: const Text('自动识别平台，从 GitHub 获取最新版本',
+                style: TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              showError(context, '正在检查更新…');
+              final info = await Updater.check();
+              if (!context.mounted) return;
+              if (info == null) {
+                showError(context, '已是最新版本 ✓');
+              } else {
+                showUpdateDialog(context, info);
+              }
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('${AppConfig.appName} v1.3.1',
+            subtitle: const Text('${AppConfig.appName} v1.4.0',
                 style: TextStyle(fontSize: 12)),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: AppConfig.appName,
-              applicationVersion: '1.3.1',
+              applicationVersion: '1.4.0',
               children: const [
                 Text('一个轻量的实时聊天应用：私聊、群聊、炫圈、面对面扫码加好友。'),
               ],

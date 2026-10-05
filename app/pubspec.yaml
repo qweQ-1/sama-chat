@@ -1,7 +1,7 @@
 name: samachat
 description: "sama-chat — 私聊 · 群聊 · 炫圈，轻量实时聊天应用"
 publish_to: 'none'
-version: 1.3.1+7
+version: 1.4.0+8
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -21,6 +21,10 @@ dependencies:
   flutter_foreground_task: ^8.0.0
   just_audio: ^0.9.39
   audio_session: ^0.1.21
+  package_info_plus: ^8.0.0
+  open_filex: ^4.5.0
+  url_launcher: ^6.3.0
+  path_provider: ^2.1.4
 
 dev_dependencies:
   flutter_test:

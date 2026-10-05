@@ -224,10 +224,8 @@ export function registerApiRoutes(app, io) {
         createdAt: now(),
       });
     }
-    removeFriendship(req.userId, targetId);
+    // 注意：拉黑不影响好友关系（解除后立即恢复正常），只拦截消息/好友申请/炫圈可见性
     await save();
-    io?.toUser(targetId, 'friend:removed', { userId: req.userId });
-    io?.toUser(req.userId, 'friend:removed', { userId: targetId });
     return { ok: true };
   });
 
@@ -574,8 +572,17 @@ export function registerApiRoutes(app, io) {
   // ---------- moments (炫圈) ----------
   app.get('/moments', { preHandler: app.auth }, async (req) => {
     const visible = new Set([req.userId, ...friendIdsOf(req.userId)]);
+    const myBlocks = new Set(blockIdsOf(req.userId));
+    const blockedMe = new Set(
+      db.data.blocks.filter((b) => b.blockedId === req.userId).map((b) => b.userId),
+    );
     const moments = db.data.moments
-      .filter((m) => visible.has(m.authorId))
+      .filter(
+        (m) =>
+          visible.has(m.authorId) &&
+          !myBlocks.has(m.authorId) &&
+          !blockedMe.has(m.authorId),
+      )
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, 100)
       .map((m) => ({

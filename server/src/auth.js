@@ -58,9 +58,11 @@ const smsCodes = new Map(); // phone -> {code, expiresAt, sentAt, fails, hourSta
 function smsConfig() {
   let file = {};
   try {
-    file = JSON.parse(
-      fs.readFileSync(path.resolve(process.cwd(), 'sms.config.json'), 'utf8'),
+    const raw = fs.readFileSync(
+      path.resolve(process.cwd(), 'sms.config.json'),
+      'utf8',
     );
+    file = JSON.parse(raw.replace(/^\uFEFF/, '')); // 容忍 Windows 写入的 BOM
   } catch {
     /* 没配置文件就用环境变量 */
   }

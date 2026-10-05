@@ -78,12 +78,14 @@ class AppState extends ChangeNotifier {
     required String password,
     String? displayName,
     required String phone,
+    String? code,
   }) async {
     final (t, user) = await api.register(
       username: username,
       password: password,
       displayName: displayName,
       phone: phone,
+      code: code,
     );
     await _saveSession(t, user);
   }
@@ -91,9 +93,13 @@ class AppState extends ChangeNotifier {
   /// 手机号名下的所有账号（登录第一步）。
   Future<List<User>> accountsByPhone(String phone) => api.accountsByPhone(phone);
 
-  /// 绑定 / 修改绑定的手机号。
-  Future<void> bindPhone(String phone) async {
-    me = await api.updateMe(phone: phone);
+  /// 发送短信验证码（devCode 仅开发模式返回）。
+  Future<({bool devMode, String? devCode})> sendSmsCode(String phone) =>
+      api.sendSmsCode(phone);
+
+  /// 绑定 / 修改绑定的手机号（需短信验证码）。
+  Future<void> bindPhone(String phone, String code) async {
+    me = await api.updateMe(phone: phone, code: code);
     notifyListeners();
   }
 

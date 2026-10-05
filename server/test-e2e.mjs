@@ -25,6 +25,12 @@ async function api(method, path, { token, body } = {}) {
   return { status: res.status, json };
 }
 
+// 发送短信验证码（测试环境为开发模式，devCode 直接返回）
+const sendCode = async (phone) => {
+  const r = await api('POST', '/auth/sms/send', { body: { phone } });
+  return { status: r.status, code: r.json?.devCode, devMode: r.json?.devMode };
+};
+
 function connectWs(token) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:8080/ws?token=${token}`);
@@ -55,21 +61,26 @@ console.log('\n== 1. health & auth ==');
 const health = await api('GET', '/health');
 ok('health endpoint', health.json?.status === 'ok');
 
+const cA = await sendCode('13800000001');
+ok('发送验证码（开发模式返回 devCode）', cA.status === 200 && cA.devMode === true && /^\d{6}$/.test(cA.code ?? ''));
 const r1 = await api('POST', '/auth/register', {
-  body: { username: 'alice', password: 'secret123', displayName: '爱丽丝', phone: '13800000001' },
+  body: { username: 'alice', password: 'secret123', displayName: '爱丽丝', phone: '13800000001', code: cA.code },
 });
 ok('register alice', r1.status === 200 && !!r1.json?.token, JSON.stringify(r1.json));
 
+const cB = await sendCode('13800000002');
 const r2 = await api('POST', '/auth/register', {
-  body: { username: 'bob', password: 'secret123', displayName: '鲍勃', phone: '13800000002' },
+  body: { username: 'bob', password: 'secret123', displayName: '鲍勃', phone: '13800000002', code: cB.code },
 });
+const cC = await sendCode('13800000003');
 const r3 = await api('POST', '/auth/register', {
-  body: { username: 'carol', password: 'secret123', displayName: '卡罗', phone: '13800000003' },
+  body: { username: 'carol', password: 'secret123', displayName: '卡罗', phone: '13800000003', code: cC.code },
 });
 ok('register bob & carol', r2.status === 200 && r3.status === 200);
 
+const cD = await sendCode('13800000004');
 const dup = await api('POST', '/auth/register', {
-  body: { username: 'alice', password: 'secret123', phone: '13800000004' },
+  body: { username: 'alice', password: 'secret123', phone: '13800000004', code: cD.code },
 });
 ok('duplicate username rejected', dup.status === 409);
 
@@ -384,17 +395,23 @@ ok('Range 请求返回 206', mgRange.status === 206);
 const mgBody = Buffer.from(await mgRange.arrayBuffer());
 ok('Range 内容长度正确', mgBody.length === 4);
 
-console.log('\n== 15. 手机号注册 / 多账号登录 ==');
-const pr1 = await api('POST', '/auth/register', { body: { phone: '13900000001', password: 'secret123' } });
+console.log('\n== 15. 手机号注册 / 多账号登录（验证码）==');
+const c15 = await sendCode('13900000001');
+const pr1 = await api('POST', '/auth/register', { body: { phone: '13900000001', password: 'secret123', code: c15.code } });
 ok('手机号注册成功（用户名=手机号）', pr1.status === 200 && pr1.json?.user?.username === '13900000001', JSON.stringify(pr1.json));
 ok('默认昵称为 用户+尾号', pr1.json?.user?.displayName === '用户0001');
-const pr2 = await api('POST', '/auth/register', { body: { phone: '13900000001', password: 'secret456', displayName: '二号机' } });
-ok('同手机号再注册（多账号）', pr2.status === 200 && pr2.json?.user?.username === '13900000001_2', JSON.stringify(pr2.json));
-const pr3 = await api('POST', '/auth/register', { body: { username: 'zoe', password: 'secret789', displayName: '佐伊', phone: '13900000001' } });
+const pr2 = await api('POST', '/auth/register', { body: { phone: '13900000001', password: 'secret456', displayName: '二号机', code: c15.code } });
+ok('同手机号再注册（多账号，同一验证码）', pr2.status === 200 && pr2.json?.user?.username === '13900000001_2', JSON.stringify(pr2.json));
+const pr3 = await api('POST', '/auth/register', { body: { username: 'zoe', password: 'secret789', displayName: '佐伊', phone: '13900000001', code: c15.code } });
 ok('账号注册可绑定同一手机号', pr3.status === 200 && pr3.json?.user?.phone === '13900000001');
 const np1 = await api('POST', '/auth/register', { body: { username: 'nophone', password: 'secret123' } });
 ok('账号注册必须绑定手机号', np1.status === 400);
-const ip1 = await api('POST', '/auth/register', { body: { phone: '123', password: 'secret123' } });
+const nc1 = await api('POST', '/auth/register', { body: { phone: '13944444444', password: 'secret123' } });
+ok('不带验证码注册被拒', nc1.status === 400);
+await sendCode('13944444444');
+const wc1 = await api('POST', '/auth/register', { body: { phone: '13944444444', password: 'secret123', code: '000000' } });
+ok('验证码错误被拒', wc1.status === 400 && wc1.json?.error === 'bad_code', JSON.stringify(wc1.json));
+const ip1 = await api('POST', '/auth/register', { body: { phone: '123', password: 'secret123', code: '123456' } });
 ok('非法手机号注册被拒', ip1.status === 400);
 const ac1 = await api('POST', '/auth/accounts', { body: { phone: '13900000001' } });
 ok('手机号可查到名下 3 个账号', ac1.json?.accounts?.length === 3, JSON.stringify(ac1.json));
@@ -406,12 +423,30 @@ const acBad = await api('POST', '/auth/accounts', { body: { phone: '12345' } });
 ok('非法手机号查询被拒', acBad.status === 400);
 const login2 = await api('POST', '/auth/login', { body: { username: '13900000001_2', password: 'secret456' } });
 ok('多账号之一可正常登录', login2.status === 200 && login2.json?.user?.username === '13900000001_2');
-const bind1 = await api('PATCH', '/auth/me', { token: A, body: { phone: '13900000001' } });
-ok('老账号可绑定手机号', bind1.status === 200 && bind1.json?.user?.phone === '13900000001');
-const ac2 = await api('POST', '/auth/accounts', { body: { phone: '13900000001' } });
-ok('绑定后列表变为 4 个', ac2.json?.accounts?.length === 4, String(ac2.json?.accounts?.length));
-const badBind = await api('PATCH', '/auth/me', { token: A, body: { phone: '999' } });
+const cBind = await sendCode('13955555555');
+const bind1 = await api('PATCH', '/auth/me', { token: A, body: { phone: '13955555555', code: cBind.code } });
+ok('老账号可绑定手机号（验证码校验）', bind1.status === 200 && bind1.json?.user?.phone === '13955555555');
+const ac2 = await api('POST', '/auth/accounts', { body: { phone: '13955555555' } });
+ok('绑定后该号码可查到 alice', ac2.json?.accounts?.length === 1 && ac2.json?.accounts?.[0]?.username === 'alice');
+const badBind = await api('PATCH', '/auth/me', { token: A, body: { phone: '999', code: '123456' } });
 ok('非法手机号绑定被拒', badBind.status === 400);
+
+console.log('\n== 16. 验证码机制（频率 / 过期 / 错误次数）==');
+const f1 = await sendCode('13966666666');
+const f2 = await sendCode('13966666666');
+ok('重复发送被频率限制', f1.status === 200 && f2.status === 429, `${f1.status}/${f2.status}`);
+const ex1 = await api('POST', '/auth/register', { body: { phone: '13977777777', password: 'secret123', code: '123456' } });
+ok('未发送验证码直接注册被拒', ex1.status === 400);
+const tx = await sendCode('13977777777');
+await new Promise((r) => setTimeout(r, Number(process.env.SMS_CODE_TTL_MS ?? 300000) + 1200));
+const ex2 = await api('POST', '/auth/register', { body: { phone: '13977777777', password: 'secret123', code: tx.code } });
+ok('验证码过期后注册被拒', ex2.status === 400, JSON.stringify(ex2.json));
+const ay = await sendCode('13988888888');
+for (let i = 0; i < 5; i++) {
+  await api('POST', '/auth/register', { body: { phone: '13988888888', password: 'secret123', code: '111111' } });
+}
+const ex3 = await api('POST', '/auth/register', { body: { phone: '13988888888', password: 'secret123', code: ay.code } });
+ok('错误 5 次后验证码作废', ex3.status === 400, JSON.stringify(ex3.json));
 
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 

@@ -1,0 +1,10 @@
+{
+  "_说明": "短信服务配置示例：填好后另存为 sms.config.json（和本文件同目录，即 server/ 下），改完即时生效无需重启。不配置此文件时，服务器自动进入开发模式：验证码直接显示在 App 中（方便调试），不会真正发短信。",
+  "_选项1_短信宝": "provider 填 smsbao，然后填你的短信宝账号密码（smsbao.com 注册，个人可用，约 ¥10 起充）",
+  "provider": "smsbao",
+  "smsbaoUser": "你的短信宝账号",
+  "smsbaoPass": "你的短信宝密码",
+  "sign": "萨摩聊天",
+  "_选项2_自定义": "也可以 provider 填 custom，customUrl 填任意短信网关的 GET 地址模板，支持 {phone} {code} {content} 占位符，例如：http://example.com/sms?mobile={phone}&text={content}",
+  "customUrl": ""
+}

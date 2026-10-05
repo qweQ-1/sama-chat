@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -29,6 +31,12 @@ class _LoginScreenState extends State<LoginScreen> {
   List<User>? _accounts;
   User? _selected;
 
+  /// 注册：短信验证码
+  final _code = TextEditingController();
+  int _codeCountdown = 0;
+  Timer? _codeTimer;
+  bool _sendingCode = false;
+
   static final _phoneRe = RegExp(r'^1[3-9]\d{9}$');
 
   String get _phoneDigits => _phone.text.replaceAll(RegExp(r'[^\d]'), '');
@@ -49,6 +57,8 @@ class _LoginScreenState extends State<LoginScreen> {
     _password.dispose();
     _displayName.dispose();
     _server.dispose();
+    _code.dispose();
+    _codeTimer?.cancel();
     super.dispose();
   }
 
@@ -62,6 +72,50 @@ class _LoginScreenState extends State<LoginScreen> {
     if (url.isNotEmpty && url != s.serverBase) {
       await s.setServer(url);
     }
+  }
+
+  // ---------------- 发送短信验证码 ----------------
+  Future<void> _sendCode() async {
+    if (!_phoneOk) {
+      showError(context, '请先填写正确的 11 位手机号');
+      return;
+    }
+    if (_codeCountdown > 0 || _sendingCode) return;
+    final s = context.read<AppState>();
+    setState(() => _sendingCode = true);
+    try {
+      await _applyServer(s);
+      final res = await s.sendSmsCode(_phoneDigits);
+      if (!mounted) return;
+      _startCountdown(60);
+      if (res.devMode && res.devCode != null) {
+        _code.text = res.devCode!;
+        showError(context, '【开发模式】验证码：${res.devCode}（已自动填入）');
+      } else {
+        showError(context, '验证码已发送，请查看短信 📱');
+      }
+    } on ApiException catch (e) {
+      if (mounted) showError(context, e.message);
+    } catch (e) {
+      if (mounted) showError(context, '发送失败: $e');
+    } finally {
+      if (mounted) setState(() => _sendingCode = false);
+    }
+  }
+
+  void _startCountdown(int secs) {
+    _codeTimer?.cancel();
+    setState(() => _codeCountdown = secs);
+    _codeTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() {
+        _codeCountdown -= 1;
+        if (_codeCountdown <= 0) t.cancel();
+      });
+    });
   }
 
   // ---------------- 手机号登录：第一步，查账号 ----------------
@@ -122,6 +176,11 @@ class _LoginScreenState extends State<LoginScreen> {
       showError(context, '请输入正确的 11 位手机号');
       return;
     }
+    final code = _code.text.trim();
+    if (code.isEmpty) {
+      showError(context, '请先获取并填写短信验证码');
+      return;
+    }
     if (_password.text.length < 6) {
       showError(context, '密码至少 6 位');
       return;
@@ -135,6 +194,7 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _password.text,
         displayName: dn.isEmpty ? null : dn,
         phone: _phoneDigits,
+        code: code,
       );
     } on ApiException catch (e) {
       if (mounted) showError(context, e.message);
@@ -162,6 +222,10 @@ class _LoginScreenState extends State<LoginScreen> {
         showError(context, '注册需要绑定手机号，请填写正确的 11 位手机号');
         return;
       }
+      if (_code.text.trim().isEmpty) {
+        showError(context, '请先获取并填写短信验证码');
+        return;
+      }
     } else if (p.isEmpty) {
       showError(context, '请填写用户名和密码');
       return;
@@ -177,6 +241,7 @@ class _LoginScreenState extends State<LoginScreen> {
           password: p,
           displayName: dn.isEmpty ? null : dn,
           phone: _phoneDigits,
+          code: _code.text.trim(),
         );
       } else {
         await s.login(u, p);
@@ -300,6 +365,8 @@ class _LoginScreenState extends State<LoginScreen> {
         w.add(_displayNameField());
         w.add(const SizedBox(height: 14));
         w.add(_phoneField(label: '手机号（必填，用于登录和找回）'));
+        w.add(const SizedBox(height: 14));
+        w.add(_codeRow());
       }
       return w;
     }
@@ -332,6 +399,10 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     w.add(_phoneField());
+    if (_isRegister) {
+      w.add(const SizedBox(height: 14));
+      w.add(_codeRow());
+    }
     w.add(const SizedBox(height: 14));
     w.add(_passwordField());
     if (_isRegister) {
@@ -415,6 +486,33 @@ class _LoginScreenState extends State<LoginScreen> {
           border: const OutlineInputBorder(),
         ),
         autocorrect: false,
+      );
+
+  Widget _codeRow() => Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _code,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: '验证码',
+                prefixIcon: Icon(Icons.sms_outlined),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            height: 56,
+            child: OutlinedButton(
+              onPressed: (_codeCountdown > 0 || _sendingCode) ? null : _sendCode,
+              child: Text(
+                _codeCountdown > 0 ? '${_codeCountdown}s' : '获取验证码',
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+          ),
+        ],
       );
 
   Widget _passwordField() => TextField(

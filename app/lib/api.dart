@@ -71,11 +71,13 @@ class Api {
 
   // ---------- auth ----------
   /// 注册：[username] 为空 = 手机号注册（服务端自动生成用户名）。
+  /// [code] 为短信验证码（注册必须）。
   Future<(String, User)> register({
     String? username,
     required String password,
     String? displayName,
     required String phone,
+    String? code,
   }) async {
     final j = await _req('POST', '/auth/register', body: {
       if (username != null && username.trim().isNotEmpty)
@@ -84,6 +86,7 @@ class Api {
       if (displayName != null && displayName.trim().isNotEmpty)
         'displayName': displayName.trim(),
       'phone': phone,
+      if (code != null) 'code': code,
     }, auth: false);
     return (j['token'] as String, User.fromJson((j['user'] as Map).cast<String, dynamic>()));
   }
@@ -94,6 +97,15 @@ class Api {
     return (j['accounts'] as List)
         .map((e) => User.fromJson((e as Map).cast<String, dynamic>()))
         .toList();
+  }
+
+  /// 发送短信验证码；开发模式（未配置短信服务）时 devCode 直接返回。
+  Future<({bool devMode, String? devCode})> sendSmsCode(String phone) async {
+    final j = await _req('POST', '/auth/sms/send', body: {'phone': phone}, auth: false);
+    return (
+      devMode: j['devMode'] as bool? ?? false,
+      devCode: j['devCode'] as String?,
+    );
   }
 
   Future<(String, User)> login(String username, String password) async {
@@ -107,11 +119,12 @@ class Api {
     return User.fromJson((j['user'] as Map).cast<String, dynamic>());
   }
 
-  Future<User> updateMe({String? displayName, String? avatar, String? phone}) async {
+  Future<User> updateMe({String? displayName, String? avatar, String? phone, String? code}) async {
     final j = await _req('PATCH', '/auth/me', body: {
       if (displayName != null) 'displayName': displayName,
       if (avatar != null) 'avatar': avatar,
       if (phone != null) 'phone': phone,
+      if (code != null) 'code': code,
     });
     return User.fromJson((j['user'] as Map).cast<String, dynamic>());
   }

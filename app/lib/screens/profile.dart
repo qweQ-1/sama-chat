@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -109,47 +111,19 @@ class ProfileTab extends StatelessWidget {
     );
   }
 
-  void _bindPhone(BuildContext context) {
+  Future<void> _bindPhone(BuildContext context) async {
     final s = context.read<AppState>();
-    final controller = TextEditingController(text: s.me?.phone ?? '');
-    showDialog(
+    final result = await showDialog<({String phone, String code})>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('绑定手机号'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.phone,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: '手机号',
-            hintText: '11 位手机号',
-            border: OutlineInputBorder(),
-            isDense: true,
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () async {
-              final p = controller.text.replaceAll(RegExp(r'[^\d]'), '');
-              Navigator.pop(ctx);
-              if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(p)) {
-                if (context.mounted) showError(context, '请输入正确的 11 位手机号');
-                return;
-              }
-              try {
-                await s.bindPhone(p);
-                if (context.mounted) showError(context, '手机号已绑定 ✓');
-              } on ApiException catch (e) {
-                if (context.mounted) showError(context, e.message);
-              }
-            },
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+      builder: (_) => const _BindPhoneDialog(),
     );
+    if (result == null) return;
+    try {
+      await s.bindPhone(result.phone, result.code);
+      if (context.mounted) showError(context, '手机号已绑定 ✓');
+    } on ApiException catch (e) {
+      if (context.mounted) showError(context, e.message);
+    }
   }
 
   static String _maskPhone(String p) =>
@@ -319,12 +293,12 @@ class ProfileTab extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('${AppConfig.appName} v1.6.0',
+            subtitle: const Text('${AppConfig.appName} v1.7.0',
                 style: TextStyle(fontSize: 12)),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: AppConfig.appName,
-              applicationVersion: '1.6.0',
+              applicationVersion: '1.7.0',
               children: const [
                 Text('一个轻量的实时聊天应用：私聊、群聊、炫圈、面对面扫码加好友。'),
               ],
@@ -365,6 +339,141 @@ class ProfileTab extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 绑定手机号对话框：手机号 + 短信验证码。
+class _BindPhoneDialog extends StatefulWidget {
+  const _BindPhoneDialog();
+
+  @override
+  State<_BindPhoneDialog> createState() => _BindPhoneDialogState();
+}
+
+class _BindPhoneDialogState extends State<_BindPhoneDialog> {
+  final _phone = TextEditingController();
+  final _code = TextEditingController();
+  int _countdown = 0;
+  Timer? _timer;
+  bool _sending = false;
+  static final _re = RegExp(r'^1[3-9]\d{9}$');
+
+  String get _digits => _phone.text.replaceAll(RegExp(r'[^\d]'), '');
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _phone.dispose();
+    _code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (!_re.hasMatch(_digits)) {
+      showError(context, '请先填写正确的 11 位手机号');
+      return;
+    }
+    if (_countdown > 0 || _sending) return;
+    setState(() => _sending = true);
+    try {
+      final res = await context.read<AppState>().sendSmsCode(_digits);
+      if (!mounted) return;
+      _startCountdown(60);
+      if (res.devMode && res.devCode != null) {
+        _code.text = res.devCode!;
+        showError(context, '【开发模式】验证码：${res.devCode}（已自动填入）');
+      } else {
+        showError(context, '验证码已发送，请查看短信 📱');
+      }
+    } on ApiException catch (e) {
+      if (mounted) showError(context, e.message);
+    } catch (e) {
+      if (mounted) showError(context, '发送失败: $e');
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  void _startCountdown(int secs) {
+    _timer?.cancel();
+    setState(() => _countdown = secs);
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() {
+        _countdown -= 1;
+        if (_countdown <= 0) t.cancel();
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('绑定手机号'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: '手机号',
+              hintText: '11 位手机号',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _code,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '验证码',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: (_countdown > 0 || _sending) ? null : _send,
+                child: Text(
+                  _countdown > 0 ? '${_countdown}s' : '获取验证码',
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        FilledButton(
+          onPressed: () {
+            final p = _digits;
+            final c = _code.text.trim();
+            if (!_re.hasMatch(p)) {
+              showError(context, '请输入正确的 11 位手机号');
+              return;
+            }
+            if (c.isEmpty) {
+              showError(context, '请输入短信验证码');
+              return;
+            }
+            Navigator.pop(context, (phone: p, code: c));
+          },
+          child: const Text('保存'),
+        ),
+      ],
     );
   }
 }

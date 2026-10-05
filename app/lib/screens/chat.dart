@@ -126,8 +126,7 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('撤回消息'),
-        content: const Text('确定要撤回这条消息吗？（对方将看到"已撤回"）'),
-        actions: [
+        content: const Text('确定要撤回这条消息吗？（对方将看到"已撤回"）'),        actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('取消')),
@@ -205,9 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           final showTime = older == null ||
                               m.createdAt - older.createdAt > 5 * 60 * 1000;
                           final isFresh = !_animatedOnce.contains(m.id) &&
-                              DateTime.now().millisecondsSinceEpoch -
-                                      m.createdAt <
-                                  3000;
+                              serverNowMs() - m.createdAt < 3000;
                           if (isFresh) _animatedOnce.add(m.id);
                           return AnimatedSwitcher(
                             duration: const Duration(milliseconds: 220),
@@ -228,9 +225,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                     !m.recalled &&
                                     !m.pending &&
                                     !m.failed &&
-                                    DateTime.now().millisecondsSinceEpoch -
-                                            m.createdAt <
-                                        5 * 60 * 1000,
+                                    serverNowMs() - m.createdAt <
+                                        24 * 60 * 60 * 1000,
                                 onRecall: () => _confirmRecall(m),
                               ),
                             ),

@@ -175,7 +175,7 @@ class GroupMember {
   bool get muted {
     if (mutedUntil == 0) return false;
     if (mutedUntil < 0) return true;
-    return DateTime.now().millisecondsSinceEpoch < mutedUntil;
+    return serverNowMs() < mutedUntil;
   }
 
   factory GroupMember.fromJson(Map<String, dynamic> j) => GroupMember(
@@ -294,6 +294,11 @@ class Moment {
       );
 }
 
+/// 服务器时间偏移（毫秒）：手机时钟不准时，用 serverNowMs() 代替 DateTime.now()。
+int serverTimeOffsetMs = 0;
+
+int serverNowMs() => DateTime.now().millisecondsSinceEpoch + serverTimeOffsetMs;
+
 /// Parse `samachat://add?uid=u_xxx` QR payloads (or a bare user id).
 String? parseAddPayload(String? raw) {
   if (raw == null || raw.isEmpty) return null;
@@ -310,7 +315,7 @@ String? parseAddPayload(String? raw) {
 String formatTime(int ms) {
   if (ms <= 0) return '';
   final dt = DateTime.fromMillisecondsSinceEpoch(ms);
-  final now = DateTime.now();
+  final now = DateTime.fromMillisecondsSinceEpoch(serverNowMs());
   final diff = now.difference(dt);
 
   if (diff.inMinutes < 1) return '刚刚';

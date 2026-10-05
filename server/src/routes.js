@@ -539,8 +539,8 @@ export function registerApiRoutes(app, io) {
       return reply.code(403).send({ error: 'not_owner', message: '只能撤回自己的消息' });
     }
     if (msg.recalled) return { message: msg }; // 已撤回，幂等返回
-    if (now() - msg.createdAt > 5 * 60 * 1000) {
-      return reply.code(400).send({ error: 'too_old', message: '超过 5 分钟的消息不能撤回' });
+    if (now() - msg.createdAt > 24 * 60 * 60 * 1000) {
+      return reply.code(400).send({ error: 'too_old', message: '超过 24 小时的消息不能撤回' });
     }
     msg.recalled = true;
     msg.content = '';

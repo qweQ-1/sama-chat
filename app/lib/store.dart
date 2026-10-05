@@ -54,6 +54,7 @@ class AppState extends ChangeNotifier {
     api.base = serverBase;
     notificationsEnabled = _prefs!.getBool('notifications') ?? true;
     keepAliveEnabled = _prefs!.getBool('keepAlive') ?? true;
+    unawaited(_syncServerTime());
     token = _prefs!.getString('token');
     if (token != null && token!.isNotEmpty) {
       api.token = token;
@@ -87,8 +88,19 @@ class AppState extends ChangeNotifier {
     api.token = t;
     me = user;
     await _prefs?.setString('token', t);
+    unawaited(_syncServerTime());
     _afterLogin();
     notifyListeners();
+  }
+
+  /// 以服务器时间为准（防止设备时钟不准导致撤回/新鲜度判断出错）。
+  Future<void> _syncServerTime() async {
+    try {
+      final before = DateTime.now().millisecondsSinceEpoch;
+      final serverMs = await api.serverTime();
+      final after = DateTime.now().millisecondsSinceEpoch;
+      serverTimeOffsetMs = serverMs - ((before + after) ~/ 2);
+    } catch (_) {}
   }
 
   void _afterLogin() {
@@ -153,6 +165,7 @@ class AppState extends ChangeNotifier {
   void handleResume() {
     appInForeground = true;
     rt.ensureConnected();
+    unawaited(_syncServerTime());
     if (keepAliveEnabled) unawaited(KeepAliveService.start());
   }
 
@@ -399,13 +412,14 @@ class AppState extends ChangeNotifier {
   /// 发送文字：先本地立即上屏（乐观更新），服务器确认后替换为正式消息。
   Future<void> sendText(String conversationId, String text) async {
     final meId = me?.id ?? '';
+    final nowMsVal = serverNowMs();
     final temp = Message(
       id: 'tmp_${DateTime.now().microsecondsSinceEpoch}',
       conversationId: conversationId,
       senderId: meId,
       type: 'text',
       content: text,
-      createdAt: DateTime.now().millisecondsSinceEpoch,
+      createdAt: nowMsVal,
       readBy: [meId],
       sender: me,
       pending: true,

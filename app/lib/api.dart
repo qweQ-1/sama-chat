@@ -250,7 +250,11 @@ class Api {
         .toList();
   }
 
-  Future<Moment> postMoment(String text, List<String> images) async {
+  /// 服务器时间获取（/health 接口返回 time 字段）
+  Future<int> serverTime() async {
+    final j = await _req('GET', '/health', auth: false);
+    return (j['time'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch;
+  }
     final j = await _req('POST', '/moments', body: {'text': text, 'images': images});
     return Moment.fromJson((j['moment'] as Map).cast<String, dynamic>());
   }

@@ -26,7 +26,39 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final c = _conv;
     final me = _myId;
     if (c == null || me == null) return false;
-    return c.ownerId == me || c.adminIds.contains(me);
+    if (c.ownerId == me || c.adminIds.contains(me)) return true;
+    // 兜底：以服务器返回的成员角色为准
+    return _members.any((m) => m.user.id == me && (m.isOwner || m.isAdmin));
+  }
+
+  /// 我能否对某个成员执行管理操作
+  bool _canActOn(GroupMember m) {
+    final c = _conv;
+    final me = _myId;
+    if (c == null || me == null) return false;
+    if (m.user.id == me) return false;
+    return c.ownerId == me ||
+        (c.adminIds.contains(me) && !m.isAdmin && !m.isOwner);
+  }
+
+  String get _roleHint {
+    final c = _conv;
+    final me = _myId;
+    if (c == null || me == null) return '';
+    final mine = _members.where((m) => m.user.id == me).toList();
+    final role = mine.isNotEmpty
+        ? mine.first.role
+        : (c.ownerId == me
+            ? 'owner'
+            : (c.adminIds.contains(me) ? 'admin' : 'member'));
+    switch (role) {
+      case 'owner':
+        return '你是群主：可以修改群名称、设置管理员、禁言、踢人、转让群主\n（点击成员条目即可管理）';
+      case 'admin':
+        return '你是管理员：可以修改群名称、禁言、踢出普通成员\n（点击成员条目即可管理）';
+      default:
+        return '你是普通成员：群名称与成员管理由群主/管理员操作';
+    }
   }
 
   bool get _amOwner {
@@ -100,14 +132,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   }
 
   void _memberSheet(GroupMember m) {
-    final me = _myId;
-    final c = _conv;
-    if (c == null || me == null) return;
-    if (m.user.id == me || !_canManage) return;
-    // 管理员只能操作普通成员；群主可操作除自己外所有人
-    final canActOnTarget = c.ownerId == me ||
-        (c.adminIds.contains(me) && !m.isAdmin && !m.isOwner);
-    if (!canActOnTarget) return;
+    if (!_canActOn(m)) return;
 
     showModalBottomSheet(
       context: context,
@@ -298,6 +323,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                           onPressed: _rename,
                         )
                       : null,
+                  onTap: _canManage ? _rename : null,
                 ),
                 const Divider(),
                 const Padding(
@@ -324,13 +350,22 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                           if (m.muted) _badge('禁言中', Colors.grey),
                         ],
                       ),
-                      trailing: (m.user.id != _myId && _canManage)
+                      trailing: _canActOn(m)
                           ? IconButton(
                               icon: const Icon(Icons.more_horiz),
                               onPressed: () => _memberSheet(m),
                             )
                           : null,
+                      onTap: _canActOn(m) ? () => _memberSheet(m) : null,
                     )),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Text(
+                    _roleHint,
+                    style: const TextStyle(
+                        fontSize: 12.5, color: Colors.grey, height: 1.6),
+                  ),
+                ),
                 const SizedBox(height: 24),
               ],
             ),

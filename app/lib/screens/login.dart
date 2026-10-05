@@ -17,30 +17,40 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _email = TextEditingController();
   final _phone = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _displayName = TextEditingController();
+  final _code = TextEditingController();
   final _server = TextEditingController();
+
+  /// 服务器注册模式：email（默认）| phone
+  String _mode = 'email';
+  bool _modeLoaded = false;
+  bool _accountMode = false; // true=账号密码 tab
   bool _isRegister = false;
-  bool _phoneMode = true; // true=手机号, false=账号密码
   bool _busy = false;
   bool _showServer = false;
 
-  /// 手机号登录：查到的账号列表 / 选中的账号。
-  List<User>? _accounts;
-  User? _selected;
-
-  /// 注册：短信验证码
-  final _code = TextEditingController();
+  /// 验证码
   int _codeCountdown = 0;
   Timer? _codeTimer;
   bool _sendingCode = false;
 
-  static final _phoneRe = RegExp(r'^1[3-9]\d{9}$');
+  /// 快捷登录：查到的账号列表 / 选中的账号
+  List<User>? _accounts;
+  User? _selected;
 
+  static final _phoneRe = RegExp(r'^1[3-9]\d{9}$');
+  static final _emailRe = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
+
+  bool get _isEmailMode => _mode == 'email';
   String get _phoneDigits => _phone.text.replaceAll(RegExp(r'[^\d]'), '');
   bool get _phoneOk => _phoneRe.hasMatch(_phoneDigits);
+  String get _emailText => _email.text.trim().toLowerCase();
+  bool get _emailOk => _emailRe.hasMatch(_emailText);
+  bool get _identOk => _isEmailMode ? _emailOk : _phoneOk;
 
   @override
   void didChangeDependencies() {
@@ -48,21 +58,33 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_server.text.isEmpty) {
       _server.text = context.read<AppState>().serverBase;
     }
+    if (!_modeLoaded) {
+      _modeLoaded = true;
+      _loadMode();
+    }
+  }
+
+  Future<void> _loadMode() async {
+    try {
+      final m = await context.read<AppState>().fetchAuthMode();
+      if (mounted) setState(() => _mode = m == 'phone' ? 'phone' : 'email');
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    _email.dispose();
     _phone.dispose();
     _username.dispose();
     _password.dispose();
     _displayName.dispose();
-    _server.dispose();
     _code.dispose();
+    _server.dispose();
     _codeTimer?.cancel();
     super.dispose();
   }
 
-  void _resetPhoneFlow() {
+  void _resetFlow() {
     _accounts = null;
     _selected = null;
   }
@@ -74,10 +96,11 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ---------------- 发送短信验证码 ----------------
+  // ---------------- 获取验证码（注册用） ----------------
   Future<void> _sendCode() async {
-    if (!_phoneOk) {
-      showError(context, '请先填写正确的 11 位手机号');
+    final emailMode = _isEmailMode;
+    if (emailMode ? !_emailOk : !_phoneOk) {
+      showError(context, emailMode ? '请先填写正确的邮箱地址' : '请先填写正确的 11 位手机号');
       return;
     }
     if (_codeCountdown > 0 || _sendingCode) return;
@@ -85,14 +108,18 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _sendingCode = true);
     try {
       await _applyServer(s);
-      final res = await s.sendSmsCode(_phoneDigits);
+      final res = emailMode
+          ? await s.sendEmailCode(_emailText)
+          : await s.sendSmsCode(_phoneDigits);
       if (!mounted) return;
       _startCountdown(60);
-      if (res.devMode && res.devCode != null) {
+      if (res.mode == 'dev' && res.devCode != null) {
         _code.text = res.devCode!;
         showError(context, '【开发模式】验证码：${res.devCode}（已自动填入）');
+      } else if (res.mode == 'console') {
+        showError(context, '【管理员模式】验证码已生成，请联系管理员获取 😊');
       } else {
-        showError(context, '验证码已发送，请查看短信 📱');
+        showError(context, emailMode ? '验证码已发送，请查收邮箱 📧' : '验证码已发送，请查看短信 📱');
       }
     } on ApiException catch (e) {
       if (mounted) showError(context, e.message);
@@ -118,20 +145,26 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-  // ---------------- 手机号登录：第一步，查账号 ----------------
+  // ---------------- 快捷登录：第一步，查账号 ----------------
   Future<void> _findAccounts() async {
-    if (!_phoneOk) {
-      showError(context, '请输入正确的 11 位手机号');
+    if (!_identOk) {
+      showError(context, _isEmailMode ? '请输入正确的邮箱地址' : '请输入正确的 11 位手机号');
       return;
     }
     final s = context.read<AppState>();
     setState(() => _busy = true);
     try {
       await _applyServer(s);
-      final list = await s.accountsByPhone(_phoneDigits);
+      final list = _isEmailMode
+          ? await s.accounts(email: _emailText)
+          : await s.accounts(phone: _phoneDigits);
       if (!mounted) return;
       if (list.isEmpty) {
-        showError(context, '该手机号还没有注册过账号，点下方「立即注册」创建一个吧');
+        showError(
+            context,
+            _isEmailMode
+                ? '该邮箱还没有注册过账号，点下方「立即注册」创建一个吧'
+                : '该手机号还没有注册过账号，点下方「立即注册」创建一个吧');
         return;
       }
       setState(() {
@@ -148,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ---------------- 手机号登录：第三步，登录选中的账号 ----------------
+  // ---------------- 快捷登录：第三步，登录选中的账号 ----------------
   Future<void> _loginSelected() async {
     final sel = _selected;
     if (sel == null) return;
@@ -170,15 +203,15 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ---------------- 手机号注册（自动生成用户名） ----------------
-  Future<void> _submitPhoneRegister() async {
-    if (!_phoneOk) {
-      showError(context, '请输入正确的 11 位手机号');
+  // ---------------- 快捷注册（邮箱 / 手机号 + 验证码） ----------------
+  Future<void> _submitQuickRegister() async {
+    if (!_identOk) {
+      showError(context, _isEmailMode ? '请输入正确的邮箱地址' : '请输入正确的 11 位手机号');
       return;
     }
     final code = _code.text.trim();
     if (code.isEmpty) {
-      showError(context, '请先获取并填写短信验证码');
+      showError(context, '请先获取并填写验证码');
       return;
     }
     if (_password.text.length < 6) {
@@ -193,7 +226,8 @@ class _LoginScreenState extends State<LoginScreen> {
       await s.register(
         password: _password.text,
         displayName: dn.isEmpty ? null : dn,
-        phone: _phoneDigits,
+        phone: _isEmailMode ? null : _phoneDigits,
+        email: _isEmailMode ? _emailText : null,
         code: code,
       );
     } on ApiException catch (e) {
@@ -218,12 +252,13 @@ class _LoginScreenState extends State<LoginScreen> {
         showError(context, '密码至少 6 位');
         return;
       }
-      if (!_phoneOk) {
-        showError(context, '注册需要绑定手机号，请填写正确的 11 位手机号');
+      if (!_identOk) {
+        showError(context,
+            _isEmailMode ? '注册需要绑定邮箱，请填写正确的邮箱地址' : '注册需要绑定手机号，请填写正确的 11 位手机号');
         return;
       }
       if (_code.text.trim().isEmpty) {
-        showError(context, '请先获取并填写短信验证码');
+        showError(context, '请先获取并填写验证码');
         return;
       }
     } else if (p.isEmpty) {
@@ -240,7 +275,8 @@ class _LoginScreenState extends State<LoginScreen> {
           username: u,
           password: p,
           displayName: dn.isEmpty ? null : dn,
-          phone: _phoneDigits,
+          phone: _isEmailMode ? null : _phoneDigits,
+          email: _isEmailMode ? _emailText : null,
           code: _code.text.trim(),
         );
       } else {
@@ -299,19 +335,34 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 28),
                   SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'phone', label: Text('手机号')),
-                      ButtonSegment(value: 'account', label: Text('账号密码')),
+                    segments: [
+                      ButtonSegment(
+                          value: 'ident',
+                          label: Text(_isEmailMode ? '邮箱' : '手机号')),
+                      const ButtonSegment(
+                          value: 'account', label: Text('账号密码')),
                     ],
-                    selected: {_phoneMode ? 'phone' : 'account'},
+                    selected: {_accountMode ? 'account' : 'ident'},
                     onSelectionChanged: _busy
                         ? null
                         : (sel) => setState(() {
-                              _phoneMode = sel.first == 'phone';
-                              _resetPhoneFlow();
+                              _accountMode = sel.first == 'account';
+                              _resetFlow();
                             }),
                   ),
-                  const SizedBox(height: 22),
+                  if (!_accountMode)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        _isEmailMode
+                            ? '提示：用手机号注册的老账号 → 切到「账号密码」登录（用户名=手机号）'
+                            : '提示：用邮箱注册的账号 → 切到「账号密码」登录（用户名=邮箱前缀）',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 11.5, color: Colors.grey.shade400),
+                      ),
+                    ),
+                  const SizedBox(height: 16),
                   ..._fields(),
                   const SizedBox(height: 24),
                   ..._mainActions(),
@@ -320,7 +371,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? null
                         : () => setState(() {
                               _isRegister = !_isRegister;
-                              _resetPhoneFlow();
+                              _resetFlow();
                             }),
                     child: Text(_isRegister ? '已有账号？去登录' : '没有账号？立即注册'),
                   ),
@@ -355,7 +406,7 @@ class _LoginScreenState extends State<LoginScreen> {
   List<Widget> _fields() {
     final w = <Widget>[];
 
-    if (!_phoneMode) {
+    if (_accountMode) {
       // 账号密码模式
       w.add(_usernameField());
       w.add(const SizedBox(height: 14));
@@ -364,24 +415,26 @@ class _LoginScreenState extends State<LoginScreen> {
         w.add(const SizedBox(height: 14));
         w.add(_displayNameField());
         w.add(const SizedBox(height: 14));
-        w.add(_phoneField(label: '手机号（必填，用于登录和找回）'));
+        w.add(_isEmailMode
+            ? _emailField(label: '邮箱（必填，用于登录和找回）')
+            : _phoneField(label: '手机号（必填，用于登录和找回）'));
         w.add(const SizedBox(height: 14));
         w.add(_codeRow());
       }
       return w;
     }
 
-    // 手机号模式
+    // 快捷模式
     if (!_isRegister && _accounts != null) {
       if (_selected != null) {
-        // 已选中账号 → 输密码
         w.add(_AccountTile(user: _selected!));
         w.add(const SizedBox(height: 14));
         w.add(_passwordField());
       } else {
-        // 多账号 → 列表选择
         w.add(Text(
-          '该手机号下有 ${_accounts!.length} 个账号，选择要登录的：',
+          _isEmailMode
+              ? '该邮箱下有 ${_accounts!.length} 个账号，选择要登录的：'
+              : '该手机号下有 ${_accounts!.length} 个账号，选择要登录的：',
           style: TextStyle(fontSize: 13.5, color: Colors.grey.shade600),
         ));
         w.add(const SizedBox(height: 12));
@@ -398,7 +451,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return w;
     }
 
-    w.add(_phoneField());
+    w.add(_isEmailMode ? _emailField() : _phoneField());
     if (_isRegister) {
       w.add(const SizedBox(height: 14));
       w.add(_codeRow());
@@ -415,22 +468,22 @@ class _LoginScreenState extends State<LoginScreen> {
   List<Widget> _mainActions() {
     final w = <Widget>[];
 
-    // 账号列表选择状态：不放主按钮，由下方文字按钮控制返回
-    if (_phoneMode && !_isRegister && _accounts != null && _selected == null) {
+    // 账号列表选择状态：不显示主按钮
+    if (!_accountMode && !_isRegister && _accounts != null && _selected == null) {
       return w;
     }
 
     String label;
     Future<void> Function() action;
-    if (_phoneMode && !_isRegister && _accounts == null) {
+    if (!_accountMode && !_isRegister && _accounts == null) {
       label = '下一步';
       action = _findAccounts;
-    } else if (_phoneMode && !_isRegister) {
+    } else if (!_accountMode && !_isRegister) {
       label = '登 录';
       action = _loginSelected;
-    } else if (_phoneMode) {
+    } else if (!_accountMode) {
       label = '注 册';
-      action = _submitPhoneRegister;
+      action = _submitQuickRegister;
     } else {
       label = _isRegister ? '注 册' : '登 录';
       action = _submitAccount;
@@ -448,7 +501,7 @@ class _LoginScreenState extends State<LoginScreen> {
           : Text(label, style: const TextStyle(fontSize: 16)),
     ));
 
-    if (_phoneMode && !_isRegister && _accounts != null) {
+    if (!_accountMode && !_isRegister && _accounts != null) {
       w.add(TextButton(
         onPressed: _busy
             ? null
@@ -456,11 +509,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   if (_selected != null) {
                     _selected = null; // 回到账号列表
                   } else {
-                    _resetPhoneFlow(); // 回到手机号输入
+                    _resetFlow(); // 回到输入
                   }
                   _password.clear();
                 }),
-        child: Text(_selected != null ? '切换账号' : '← 换个手机号'),
+        child: Text(_selected != null
+            ? '切换账号'
+            : (_isEmailMode ? '← 换个邮箱' : '← 换个手机号')),
       ));
     }
     return w;
@@ -477,6 +532,18 @@ class _LoginScreenState extends State<LoginScreen> {
         enableSuggestions: false,
       );
 
+  Widget _emailField({String label = '邮箱'}) => TextField(
+        controller: _email,
+        keyboardType: TextInputType.emailAddress,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: const Icon(Icons.alternate_email),
+          border: const OutlineInputBorder(),
+        ),
+        autocorrect: false,
+        enableSuggestions: false,
+      );
+
   Widget _phoneField({String label = '手机号'}) => TextField(
         controller: _phone,
         keyboardType: TextInputType.phone,
@@ -486,6 +553,25 @@ class _LoginScreenState extends State<LoginScreen> {
           border: const OutlineInputBorder(),
         ),
         autocorrect: false,
+      );
+
+  Widget _passwordField() => TextField(
+        controller: _password,
+        obscureText: true,
+        decoration: const InputDecoration(
+          labelText: '密码',
+          prefixIcon: Icon(Icons.lock_outline),
+          border: OutlineInputBorder(),
+        ),
+      );
+
+  Widget _displayNameField() => TextField(
+        controller: _displayName,
+        decoration: const InputDecoration(
+          labelText: '昵称（可留空）',
+          prefixIcon: Icon(Icons.badge_outlined),
+          border: OutlineInputBorder(),
+        ),
       );
 
   Widget _codeRow() => Row(
@@ -514,28 +600,9 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ],
       );
-
-  Widget _passwordField() => TextField(
-        controller: _password,
-        obscureText: true,
-        decoration: const InputDecoration(
-          labelText: '密码',
-          prefixIcon: Icon(Icons.lock_outline),
-          border: OutlineInputBorder(),
-        ),
-      );
-
-  Widget _displayNameField() => TextField(
-        controller: _displayName,
-        decoration: const InputDecoration(
-          labelText: '昵称（可留空）',
-          prefixIcon: Icon(Icons.badge_outlined),
-          border: OutlineInputBorder(),
-        ),
-      );
 }
 
-/// 手机号下的账号卡片（选择登录用）。
+/// 快捷登录账号卡片。
 class _AccountTile extends StatelessWidget {
   final User user;
   final VoidCallback? onTap;

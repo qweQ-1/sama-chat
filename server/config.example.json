@@ -1,0 +1,25 @@
+{
+  "_说明": "萨摩聊天服务器配置：把本文件另存为 config.json（放在 server/ 目录），改完约 5 秒生效、无需重启。只有你需要改的项才需要保留，其余可删。",
+  "_注册模式": "authMode：email = 邮箱验证码注册/登录（默认）；phone = 手机号验证码注册/登录。两种模式下「账号密码」登录始终可用。",
+  "authMode": "email",
+  "_邮箱发送_推荐": "用你自己的 QQ 邮箱发验证码（免费）。步骤：打开 mail.qq.com → 设置 → 账号 → 开启「POP3/SMTP服务」→ 生成授权码（一串字母）→ 填到下面的 pass。163 邮箱把 host 改成 smtp.163.com 同理（授权码在 163 邮箱设置里生成）。",
+  "email": {
+    "host": "smtp.qq.com",
+    "port": 465,
+    "secure": true,
+    "user": "你的QQ号@qq.com",
+    "pass": "这里填SMTP授权码（不是QQ密码）",
+    "from": "你的QQ号@qq.com"
+  },
+  "_短信_可选": "如果切成手机号模式，需要短信服务。providers 可选：smsgate = 用安卓手机当网关免费发（SMS Gateway App，sms-gate.app，装到一台安卓手机上，把 App 首页显示的账号密码填到 smsgateUser/smsgatePass）；consoleMode = true 时验证码显示在服务器窗口（管理员转告，免费）。不配置时验证码会直接显示在 App 里（调试用）。",
+  "sms": {
+    "provider": "",
+    "consoleMode": false,
+    "smsgateUser": "",
+    "smsgatePass": "",
+    "smsbaoUser": "",
+    "smsbaoPass": "",
+    "sign": "萨摩聊天",
+    "customUrl": ""
+  }
+}

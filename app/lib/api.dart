@@ -70,13 +70,14 @@ class Api {
   }
 
   // ---------- auth ----------
-  /// 注册：[username] 为空 = 手机号注册（服务端自动生成用户名）。
-  /// [code] 为短信验证码（注册必须）。
+  /// 注册：[username] 为空 = 快捷注册（按服务器模式自动生成用户名）。
+  /// [code] 为验证码（邮箱模式=邮箱验证码，手机号模式=短信验证码）。
   Future<(String, User)> register({
     String? username,
     required String password,
     String? displayName,
-    required String phone,
+    String? phone,
+    String? email,
     String? code,
   }) async {
     final j = await _req('POST', '/auth/register', body: {
@@ -85,27 +86,46 @@ class Api {
       'password': password,
       if (displayName != null && displayName.trim().isNotEmpty)
         'displayName': displayName.trim(),
-      'phone': phone,
+      if (phone != null) 'phone': phone,
+      if (email != null) 'email': email,
       if (code != null) 'code': code,
     }, auth: false);
     return (j['token'] as String, User.fromJson((j['user'] as Map).cast<String, dynamic>()));
   }
 
-  /// 手机号登录第一步：查该手机号名下的所有账号。
-  Future<List<User>> accountsByPhone(String phone) async {
-    final j = await _req('POST', '/auth/accounts', body: {'phone': phone}, auth: false);
+  /// 登录第一步：查手机号/邮箱名下的所有账号。
+  Future<List<User>> accounts({String? phone, String? email}) async {
+    final j = await _req('POST', '/auth/accounts',
+        body: {if (phone != null) 'phone': phone, if (email != null) 'email': email},
+        auth: false);
     return (j['accounts'] as List)
         .map((e) => User.fromJson((e as Map).cast<String, dynamic>()))
         .toList();
   }
 
-  /// 发送短信验证码；开发模式（未配置短信服务）时 devCode 直接返回。
-  Future<({bool devMode, String? devCode})> sendSmsCode(String phone) async {
+  /// 发送短信验证码。
+  /// 返回 mode: 'sent'（已发送）| 'dev'（开发模式，验证码直接返回）| 'console'（管理员模式，码在服务器窗口）。
+  Future<({String mode, String? devCode})> sendSmsCode(String phone) async {
     final j = await _req('POST', '/auth/sms/send', body: {'phone': phone}, auth: false);
-    return (
-      devMode: j['devMode'] as bool? ?? false,
-      devCode: j['devCode'] as String?,
-    );
+    final mode = j['consoleMode'] == true
+        ? 'console'
+        : (j['devMode'] == true ? 'dev' : 'sent');
+    return (mode: mode, devCode: j['devCode'] as String?);
+  }
+
+  /// 发送邮箱验证码（返回结构与短信相同）。
+  Future<({String mode, String? devCode})> sendEmailCode(String email) async {
+    final j = await _req('POST', '/auth/email/send', body: {'email': email}, auth: false);
+    final mode = j['consoleMode'] == true
+        ? 'console'
+        : (j['devMode'] == true ? 'dev' : 'sent');
+    return (mode: mode, devCode: j['devCode'] as String?);
+  }
+
+  /// 服务器当前的注册/登录模式：'email' | 'phone'。
+  Future<String> fetchAuthMode() async {
+    final j = await _req('GET', '/health', auth: false);
+    return j['authMode'] as String? ?? 'email';
   }
 
   Future<(String, User)> login(String username, String password) async {
@@ -119,11 +139,12 @@ class Api {
     return User.fromJson((j['user'] as Map).cast<String, dynamic>());
   }
 
-  Future<User> updateMe({String? displayName, String? avatar, String? phone, String? code}) async {
+  Future<User> updateMe({String? displayName, String? avatar, String? phone, String? email, String? code}) async {
     final j = await _req('PATCH', '/auth/me', body: {
       if (displayName != null) 'displayName': displayName,
       if (avatar != null) 'avatar': avatar,
       if (phone != null) 'phone': phone,
+      if (email != null) 'email': email,
       if (code != null) 'code': code,
     });
     return User.fromJson((j['user'] as Map).cast<String, dynamic>());

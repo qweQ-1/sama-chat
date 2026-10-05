@@ -1,7 +1,7 @@
 // sama-chat backend entry point.
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
-import { registerAuthRoutes, verifyToken } from './auth.js';
+import { registerAuthRoutes, verifyToken, authMode } from './auth.js';
 import { registerApiRoutes } from './routes.js';
 import { createIo } from './realtime.js';
 
@@ -65,6 +65,7 @@ app.get('/health', async () => ({
   status: 'ok',
   service: 'sama-chat',
   online: io.count(),
+  authMode: authMode(),
   time: Date.now(),
 }));
 

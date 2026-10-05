@@ -3,26 +3,38 @@
 #  用法（复制到服务器上运行）：
 #    iex (iwr 'https://gh-proxy.com/https://raw.githubusercontent.com/qweQ-1/sama-chat/main/server/update-server.ps1' -UseBasicParsing).Content
 #
-#  做三件事：下载最新代码 → 替换 src（保留 node_modules 与数据）→ 重启并自检
+#  流程：下载最新代码 → 替换 src/ 与 package.json（保留聊天数据）→ 安装依赖 → 重启并自检
 # =============================================================
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-Write-Host ">>> [1/3] 下载最新服务端代码…" -ForegroundColor Cyan
+Write-Host ">>> [1/4] 下载最新服务端代码…" -ForegroundColor Cyan
 Invoke-WebRequest 'https://gh-proxy.com/https://github.com/qweQ-1/sama-chat/archive/refs/heads/main.zip' `
   -OutFile 'C:\sama-chat\src.zip' -UseBasicParsing -TimeoutSec 300
 Write-Host "    下载完成 ✓"
 
-Write-Host ">>> [2/3] 替换代码（保留依赖 node_modules 和聊天数据）…" -ForegroundColor Cyan
+Write-Host ">>> [2/4] 替换代码（保留 node_modules 和聊天数据）…" -ForegroundColor Cyan
 Expand-Archive 'C:\sama-chat\src.zip' 'C:\sama-chat\tmp' -Force
 Remove-Item -Recurse -Force 'C:\sama-chat\server\src.old' -ErrorAction SilentlyContinue
 Move-Item 'C:\sama-chat\server\src' 'C:\sama-chat\server\src.old'
 Copy-Item 'C:\sama-chat\tmp\sama-chat-main\server\src' 'C:\sama-chat\server\src' -Recurse
+Copy-Item 'C:\sama-chat\tmp\sama-chat-main\server\package.json' 'C:\sama-chat\server\package.json' -Force
 Remove-Item -Recurse -Force 'C:\sama-chat\tmp', 'C:\sama-chat\src.zip'
 Write-Host "    代码已更新 ✓（旧代码备份在 src.old）"
 
-Write-Host ">>> [3/3] 重启服务…" -ForegroundColor Cyan
+Write-Host ">>> [3/4] 安装/更新依赖（可能需要一两分钟）…" -ForegroundColor Cyan
+Push-Location 'C:\sama-chat\server'
+npm install --omit=dev --no-audit --no-fund 2>&1 | Select-Object -Last 2
+$npmCode = $LASTEXITCODE
+Pop-Location
+if ($npmCode -ne 0) {
+  Write-Host "    依赖安装失败（npm 退出码 $npmCode）——聊天不受影响，但邮件等新功能可能不可用" -ForegroundColor Yellow
+} else {
+  Write-Host "    依赖就绪 ✓"
+}
+
+Write-Host ">>> [4/4] 重启服务…" -ForegroundColor Cyan
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*sama-chat*' -or $_.CommandLine -like '*src\index.js*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Start-Sleep 2
 Start-Process 'C:\sama-chat\start.bat' -WindowStyle Hidden

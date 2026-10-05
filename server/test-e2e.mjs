@@ -1,5 +1,5 @@
 // End-to-end API smoke test for the sama-chat backend.
-// Run: node test-e2e.mjs  (server must be on :8080)
+// Run: AUTH_MODE=phone node test-e2e.mjs  (server must run with the same env, on :8080)
 import WebSocket from 'ws';
 import http from 'node:http';
 
@@ -60,6 +60,7 @@ const waitFor = (events, event, pred = null, ms = 4000) =>
 console.log('\n== 1. health & auth ==');
 const health = await api('GET', '/health');
 ok('health endpoint', health.json?.status === 'ok');
+ok('authMode=phone（配合 AUTH_MODE=phone 运行）', health.json?.authMode === 'phone', String(health.json?.authMode));
 
 const cA = await sendCode('13800000001');
 ok('发送验证码（开发模式返回 devCode）', cA.status === 200 && cA.devMode === true && /^\d{6}$/.test(cA.code ?? ''));

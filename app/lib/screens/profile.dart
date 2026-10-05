@@ -126,6 +126,21 @@ class ProfileTab extends StatelessWidget {
     }
   }
 
+  Future<void> _bindEmail(BuildContext context) async {
+    final s = context.read<AppState>();
+    final result = await showDialog<({String email, String code})>(
+      context: context,
+      builder: (_) => const _BindEmailDialog(),
+    );
+    if (result == null) return;
+    try {
+      await s.bindEmail(result.email, result.code);
+      if (context.mounted) showError(context, '邮箱已绑定 ✓');
+    } on ApiException catch (e) {
+      if (context.mounted) showError(context, e.message);
+    }
+  }
+
   static String _maskPhone(String p) =>
       p.length == 11 ? '${p.substring(0, 3)}****${p.substring(7)}' : p;
 
@@ -226,6 +241,18 @@ class ProfileTab extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _bindPhone(context),
           ),
+          ListTile(
+            leading: const Icon(Icons.alternate_email),
+            title: const Text('邮箱'),
+            subtitle: Text(
+              (me?.email.isEmpty ?? true) ? '未绑定 · 点这里绑定邮箱' : me!.email,
+              style: const TextStyle(fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _bindEmail(context),
+          ),
           SwitchListTile(
             secondary: const Icon(Icons.notifications_outlined),
             title: const Text('消息通知'),
@@ -293,12 +320,12 @@ class ProfileTab extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('${AppConfig.appName} v1.7.0',
+            subtitle: const Text('${AppConfig.appName} v1.8.0',
                 style: TextStyle(fontSize: 12)),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: AppConfig.appName,
-              applicationVersion: '1.7.0',
+              applicationVersion: '1.8.0',
               children: const [
                 Text('一个轻量的实时聊天应用：私聊、群聊、炫圈、面对面扫码加好友。'),
               ],
@@ -380,9 +407,11 @@ class _BindPhoneDialogState extends State<_BindPhoneDialog> {
       final res = await context.read<AppState>().sendSmsCode(_digits);
       if (!mounted) return;
       _startCountdown(60);
-      if (res.devMode && res.devCode != null) {
+      if (res.mode == 'dev' && res.devCode != null) {
         _code.text = res.devCode!;
         showError(context, '【开发模式】验证码：${res.devCode}（已自动填入）');
+      } else if (res.mode == 'console') {
+        showError(context, '【管理员模式】验证码已生成，请联系管理员获取 😊');
       } else {
         showError(context, '验证码已发送，请查看短信 📱');
       }
@@ -470,6 +499,145 @@ class _BindPhoneDialogState extends State<_BindPhoneDialog> {
               return;
             }
             Navigator.pop(context, (phone: p, code: c));
+          },
+          child: const Text('保存'),
+        ),
+      ],
+    );
+  }
+}
+
+/// 绑定邮箱对话框：邮箱 + 邮箱验证码。
+class _BindEmailDialog extends StatefulWidget {
+  const _BindEmailDialog();
+
+  @override
+  State<_BindEmailDialog> createState() => _BindEmailDialogState();
+}
+
+class _BindEmailDialogState extends State<_BindEmailDialog> {
+  final _email = TextEditingController();
+  final _code = TextEditingController();
+  int _countdown = 0;
+  Timer? _timer;
+  bool _sending = false;
+  static final _re = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
+
+  String get _norm => _email.text.trim().toLowerCase();
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _email.dispose();
+    _code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (!_re.hasMatch(_norm)) {
+      showError(context, '请先填写正确的邮箱地址');
+      return;
+    }
+    if (_countdown > 0 || _sending) return;
+    setState(() => _sending = true);
+    try {
+      final res = await context.read<AppState>().sendEmailCode(_norm);
+      if (!mounted) return;
+      _startCountdown(60);
+      if (res.mode == 'dev' && res.devCode != null) {
+        _code.text = res.devCode!;
+        showError(context, '【开发模式】验证码：${res.devCode}（已自动填入）');
+      } else if (res.mode == 'console') {
+        showError(context, '【管理员模式】验证码已生成，请联系管理员获取 😊');
+      } else {
+        showError(context, '验证码已发送，请查收邮箱 📧');
+      }
+    } on ApiException catch (e) {
+      if (mounted) showError(context, e.message);
+    } catch (e) {
+      if (mounted) showError(context, '发送失败: $e');
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  void _startCountdown(int secs) {
+    _timer?.cancel();
+    setState(() => _countdown = secs);
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() {
+        _countdown -= 1;
+        if (_countdown <= 0) t.cancel();
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('绑定邮箱'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: '邮箱',
+              hintText: '例如 name@qq.com',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            autocorrect: false,
+            enableSuggestions: false,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _code,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '验证码',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: (_countdown > 0 || _sending) ? null : _send,
+                child: Text(
+                  _countdown > 0 ? '${_countdown}s' : '获取验证码',
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        FilledButton(
+          onPressed: () {
+            final e = _norm;
+            final c = _code.text.trim();
+            if (!_re.hasMatch(e)) {
+              showError(context, '请输入正确的邮箱地址');
+              return;
+            }
+            if (c.isEmpty) {
+              showError(context, '请输入验证码');
+              return;
+            }
+            Navigator.pop(context, (email: e, code: c));
           },
           child: const Text('保存'),
         ),

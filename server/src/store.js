@@ -9,7 +9,7 @@ const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const defaultData = {
-  users: [],        // {id, username, displayName, phone, passwordHash, avatar, createdAt}
+  users: [],        // {id, username, displayName, phone, email, passwordHash, avatar, createdAt}
   friends: [],      // {id, userId, friendId, remark, createdAt}  (mutual, stored both ways)
   friendRequests: [], // {id, fromId, toId, status: pending|accepted|rejected, createdAt}
   conversations: [], // {id, type, name?, memberIds[], ownerId?, adminIds[], mutes{}, lastTransferAt?, createdAt}
@@ -28,7 +28,10 @@ for (const c of db.data.conversations) {
   c.lastTransferAt ??= 0;
 }
 db.data.blocks ??= [];
-for (const u of db.data.users) u.phone ??= '';
+for (const u of db.data.users) {
+  u.phone ??= '';
+  u.email ??= '';
+}
 
 export const newId = (prefix = '') => (prefix ? `${prefix}_` : '') + nanoid(12);
 export const now = () => Date.now();
@@ -45,16 +48,22 @@ export function publicUser(u) {
   };
 }
 
-/** 自己的账号信息（额外带绑定的手机号，只在 auth 接口返回）。 */
+/** 自己的账号信息（额外带绑定的手机号/邮箱，只在 auth 接口返回）。 */
 export function selfUser(u) {
   if (!u) return null;
-  return { ...publicUser(u), phone: u.phone ?? '' };
+  return { ...publicUser(u), phone: u.phone ?? '', email: u.email ?? '' };
 }
 
 /** 该手机号绑定的所有账号（手机号不唯一，一个手机号可绑多个账号）。 */
 export function findUsersByPhone(phone) {
   const key = String(phone ?? '');
   return db.data.users.filter((u) => (u.phone ?? '') === key);
+}
+
+/** 该邮箱绑定的所有账号（同样允许一个邮箱绑多个账号）。 */
+export function findUsersByEmail(email) {
+  const key = String(email ?? '');
+  return db.data.users.filter((u) => (u.email ?? '') === key);
 }
 
 export function findUserById(id) {

@@ -77,7 +77,8 @@ class AppState extends ChangeNotifier {
     String? username,
     required String password,
     String? displayName,
-    required String phone,
+    String? phone,
+    String? email,
     String? code,
   }) async {
     final (t, user) = await api.register(
@@ -85,21 +86,36 @@ class AppState extends ChangeNotifier {
       password: password,
       displayName: displayName,
       phone: phone,
+      email: email,
       code: code,
     );
     await _saveSession(t, user);
   }
 
-  /// 手机号名下的所有账号（登录第一步）。
-  Future<List<User>> accountsByPhone(String phone) => api.accountsByPhone(phone);
+  /// 登录第一步：查手机号/邮箱名下的所有账号。
+  Future<List<User>> accounts({String? phone, String? email}) =>
+      api.accounts(phone: phone, email: email);
 
-  /// 发送短信验证码（devCode 仅开发模式返回）。
-  Future<({bool devMode, String? devCode})> sendSmsCode(String phone) =>
+  /// 发送短信验证码（mode: sent/dev/console）。
+  Future<({String mode, String? devCode})> sendSmsCode(String phone) =>
       api.sendSmsCode(phone);
+
+  /// 发送邮箱验证码（mode: sent/dev/console）。
+  Future<({String mode, String? devCode})> sendEmailCode(String email) =>
+      api.sendEmailCode(email);
+
+  /// 服务器当前注册模式（email / phone）。
+  Future<String> fetchAuthMode() => api.fetchAuthMode();
 
   /// 绑定 / 修改绑定的手机号（需短信验证码）。
   Future<void> bindPhone(String phone, String code) async {
     me = await api.updateMe(phone: phone, code: code);
+    notifyListeners();
+  }
+
+  /// 绑定 / 修改绑定的邮箱（需邮箱验证码）。
+  Future<void> bindEmail(String email, String code) async {
+    me = await api.updateMe(email: email, code: code);
     notifyListeners();
   }
 

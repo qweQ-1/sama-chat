@@ -8,6 +8,7 @@ class User {
   final String? avatar;
   final String remark; // 好友备注（仅好友列表返回）
   final String phone; // 绑定的手机号（仅自己的账号信息里返回）
+  final String email; // 绑定的邮箱（仅自己的账号信息里返回）
 
   User({
     required this.id,
@@ -16,6 +17,7 @@ class User {
     this.avatar,
     this.remark = '',
     this.phone = '',
+    this.email = '',
   });
 
   /// 显示名：有备注优先用备注
@@ -28,6 +30,7 @@ class User {
         avatar: j['avatar'] as String?,
         remark: j['remark'] as String? ?? '',
         phone: j['phone'] as String? ?? '',
+        email: j['email'] as String? ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -36,6 +39,7 @@ class User {
         'displayName': displayName,
         'avatar': avatar,
         'phone': phone,
+        'email': email,
       };
 }
 

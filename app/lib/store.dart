@@ -98,7 +98,7 @@ class AppState extends ChangeNotifier {
       unawaited(AppNotifications.requestPermissions());
     }
     if (keepAliveEnabled) {
-      unawaited(KeepAlive.start());
+      unawaited(KeepAliveService.start());
     }
     unawaited(refreshConversations());
     unawaited(refreshFriends());
@@ -109,7 +109,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> logout() async {
     rt.disconnect();
-    unawaited(KeepAlive.stop());
+    unawaited(KeepAliveService.stop());
     token = null;
     api.token = null;
     me = null;
@@ -141,9 +141,9 @@ class AppState extends ChangeNotifier {
   Future<void> setKeepAlive(bool v) async {
     keepAliveEnabled = v;
     if (v) {
-      unawaited(KeepAlive.start());
+      unawaited(KeepAliveService.start());
     } else {
-      unawaited(KeepAlive.stop());
+      unawaited(KeepAliveService.stop());
     }
     await _prefs?.setBool('keepAlive', v);
     notifyListeners();
@@ -153,7 +153,7 @@ class AppState extends ChangeNotifier {
   void handleResume() {
     appInForeground = true;
     rt.ensureConnected();
-    if (keepAliveEnabled) unawaited(KeepAlive.start());
+    if (keepAliveEnabled) unawaited(KeepAliveService.start());
   }
 
   /// App 退到后台。

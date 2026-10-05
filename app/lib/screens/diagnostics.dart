@@ -45,7 +45,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                   : Colors.redAccent),
           _row('消息通知开关', s.notificationsEnabled ? '已开启' : '已关闭'),
           _row('后台保活开关', s.keepAliveEnabled ? '已开启' : '已关闭'),
-          _row('保活状态', KeepAlive.debugStatus),
+          _row('保活状态', KeepAliveService.debugStatus),
           _row(
             '最近收到消息',
             last == null

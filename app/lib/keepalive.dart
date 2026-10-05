@@ -36,7 +36,7 @@ class _NoopTaskHandler extends TaskHandler {
   void onNotificationPressed() {}
 }
 
-class KeepAlive {
+class KeepAliveService {
   static final AudioPlayer _player = AudioPlayer();
   static bool _audioStarted = false;
   static bool _interruptionHooked = false;

@@ -72,7 +72,7 @@ class KeepAliveService {
     } else if (Platform.isAndroid) {
       return 'Android 前台服务保活模式';
     }
-    return '未知平台';
+    return '桌面版无需后台保活';
   }
 
   static Future<void> _startAndroid() async {

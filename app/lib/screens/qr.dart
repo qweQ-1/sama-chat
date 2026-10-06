@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +11,9 @@ import '../models.dart';
 import '../store.dart';
 import '../widgets.dart';
 import 'chat.dart';
+
+/// 摄像头扫码仅手机端支持；Windows 桌面版显示提示页。
+bool get canScanQr => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
 /// "My QR code" — the other person scans this to add me.
 class MyQrScreen extends StatefulWidget {
@@ -81,18 +87,24 @@ class _MyQrScreenState extends State<MyQrScreen> {
                       const Text('扫一扫上面的二维码，加我为好友',
                           style: TextStyle(color: Colors.white54, fontSize: 13)),
                       const SizedBox(height: 30),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white38),
-                        ),
-                        onPressed: () => Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const ScanScreen()),
-                        ),
-                        icon: const Icon(Icons.qr_code_scanner, size: 18),
-                        label: const Text('去扫对方的码'),
-                      ),
+                      if (canScanQr)
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white38),
+                          ),
+                          onPressed: () => Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const ScanScreen()),
+                          ),
+                          icon: const Icon(Icons.qr_code_scanner, size: 18),
+                          label: const Text('去扫对方的码'),
+                        )
+                      else
+                        const Text('扫码加好友请在手机上使用 📱',
+                            style:
+                                TextStyle(color: Colors.white38, fontSize: 13)),
                     ],
                   ),
       ),
@@ -109,13 +121,19 @@ class ScanScreen extends StatefulWidget {
 }
 
 class _ScanScreenState extends State<ScanScreen> {
-  final _controller = MobileScannerController();
+  MobileScannerController? _controller;
   bool _handling = false;
   String? _status;
 
   @override
+  void initState() {
+    super.initState();
+    if (canScanQr) _controller = MobileScannerController();
+  }
+
+  @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -208,6 +226,24 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!canScanQr) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          title: const Text('扫一扫'),
+        ),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: Text('Windows 版暂不支持摄像头扫码\n请在手机上用「扫一扫」加好友 😊',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, height: 1.6)),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -218,7 +254,7 @@ class _ScanScreenState extends State<ScanScreen> {
       body: Stack(
         children: [
           MobileScanner(
-            controller: _controller,
+            controller: _controller!,
             onDetect: _onDetect,
           ),
           // scan frame overlay

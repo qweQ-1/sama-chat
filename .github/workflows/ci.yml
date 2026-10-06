@@ -96,3 +96,49 @@ jobs:
           name: sama-chat-ipa
           path: app/dist/*.ipa
           if-no-files-found: error
+
+  windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate platform scaffolding
+        shell: bash
+        run: cd app && flutter create --platforms=windows --org com.qweq1 --project-name samachat .
+
+      - name: Prepare Windows project
+        shell: bash
+        run: bash ci/windows-prepare.sh
+
+      - name: Get dependencies
+        shell: bash
+        run: cd app && flutter pub get
+
+      - name: Build Windows (release)
+        shell: bash
+        run: |
+          cd app
+          SERVER="${{ vars.SAMA_SERVER }}"
+          SERVER="${SERVER:-https://refrain-tapping-crazy.ngrok-free.dev}"
+          flutter build windows --release --dart-define=SAMA_SERVER=$SERVER
+
+      - name: Package ZIP
+        shell: pwsh
+        run: |
+          $dir = "app/build/windows/x64/runner/Release"
+          if (-not (Test-Path $dir)) { $dir = "app/build/windows/runner/Release" }
+          Get-ChildItem $dir | Select-Object Name, Length | Format-Table
+          Compress-Archive -Path (Join-Path $dir '*') -DestinationPath "sama-chat-windows.zip" -Force
+
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: sama-chat-windows
+          path: sama-chat-windows.zip
+          if-no-files-found: error

@@ -151,9 +151,9 @@ Future<void> showUpdateDialog(BuildContext context, UpdateInfo info) async {
   );
 }
 
-/// 执行更新：iOS 跳浏览器 / Android 下载并拉起安装器。
+/// 执行更新：桌面 / iOS 跳浏览器 / Android 下载并拉起安装器。
 Future<void> startUpdate(BuildContext context, UpdateInfo info) async {
-  if (Platform.isIOS) {
+  if (Platform.isIOS || Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     try {
       final ok = await launchUrl(
         Uri.parse(info.pageUrl),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -159,13 +160,14 @@ class _ChatScreenState extends State<ChatScreen> {
                   style: TextStyle(fontSize: 12)),
               onTap: () => Navigator.pop(ctx, 'video'),
             ),
-            ListTile(
-              leading: const Icon(Icons.video_camera_back_outlined),
-              title: const Text('拍摄视频'),
-              subtitle: const Text('最长 3 分钟 · 限 40MB',
-                  style: TextStyle(fontSize: 12)),
-              onTap: () => Navigator.pop(ctx, 'camera'),
-            ),
+            if (Platform.isAndroid || Platform.isIOS)
+              ListTile(
+                leading: const Icon(Icons.video_camera_back_outlined),
+                title: const Text('拍摄视频'),
+                subtitle: const Text('最长 3 分钟 · 限 40MB',
+                    style: TextStyle(fontSize: 12)),
+                onTap: () => Navigator.pop(ctx, 'camera'),
+              ),
             const SizedBox(height: 6),
           ],
         ),

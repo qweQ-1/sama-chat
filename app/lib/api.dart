@@ -321,6 +321,16 @@ class Api {
     return Conversation.fromJson((j['conversation'] as Map).cast<String, dynamic>());
   }
 
+  /// 退出群聊（群主需先转让或解散）。
+  Future<void> leaveGroup(String conversationId) async {
+    await _req('POST', '/conversations/$conversationId/leave');
+  }
+
+  /// 解散群聊（仅群主）。
+  Future<void> disbandGroup(String conversationId) async {
+    await _req('POST', '/conversations/$conversationId/disband');
+  }
+
   Future<(Conversation, List<GroupMember>)> groupMembers(String conversationId) async {
     final j = await _req('GET', '/conversations/$conversationId/members');
     final conv = Conversation.fromJson((j['conversation'] as Map).cast<String, dynamic>());

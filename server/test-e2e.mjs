@@ -521,6 +521,50 @@ ok('作者删除成功', delOwn.status === 200 && delOwn.json?.ok === true);
 const store3 = await api('GET', '/stickers/store', { token: B });
 ok('删除后商店里消失', !(store3.json?.packs ?? []).some((p) => p.id === stPackId));
 
+console.log('\n== 20. 退群 / 解散群聊 ==');
+const g2 = await api('POST', '/conversations/group', {
+  token: A, body: { name: '待退群', memberIds: [idB, idC] },
+});
+const g2Id = g2.json.conversation.id;
+ok('创建测试群（A 群主，B/C 成员）', g2.status === 200 && !!g2Id);
+const bWs = await connectWs(B);
+const ownerLeave = await api('POST', `/conversations/${g2Id}/leave`, { token: A });
+ok('群主不能直接退群(403)', ownerLeave.status === 403);
+const cLeave = await api('POST', `/conversations/${g2Id}/leave`, { token: C });
+ok('普通成员可退群', cLeave.status === 200 && cLeave.json?.ok === true);
+const bRemoved = await waitFor(bWs.events, 'conversation:memberLeft', (d) => d?.userId === idC);
+ok('群内其他人收到「成员已退出」通知', !!bRemoved);
+const bLeftUpdate = await waitFor(bWs.events, 'conversation:update', (d) => d?.conversation?.id === g2Id);
+ok('群信息更新（成员已移除）',
+  !!bLeftUpdate && Array.isArray(bLeftUpdate.conversation.memberIds) &&
+  bLeftUpdate.conversation.memberIds.length === 2 &&
+  !bLeftUpdate.conversation.memberIds.includes(idC));
+// 再通过会话列表确认人数（服务端计算的 memberCount）
+const bListAfterLeave = await api('GET', '/conversations', { token: B });
+ok('会话列表人数已减少',
+  (bListAfterLeave.json?.conversations ?? []).some((x) => x.id === g2Id && x.memberCount === 2));
+const cSendAfterLeave = await api('POST', `/conversations/${g2Id}/messages`, {
+  token: C, body: { content: '我退群了还能发吗' },
+});
+ok('退群后无法再发消息(404)', cSendAfterLeave.status === 404);
+const cHistAfterLeave = await api('GET', `/conversations/${g2Id}/messages`, { token: C });
+ok('退群后无法拉取历史(404)', cHistAfterLeave.status === 404);
+const cListAfterLeave = await api('GET', '/conversations', { token: C });
+ok('退群后会话列表里不再有它', !(cListAfterLeave.json?.conversations ?? []).some((x) => x.id === g2Id));
+const nonOwnerDisband = await api('POST', `/conversations/${g2Id}/disband`, { token: B });
+ok('非群主解散被拒(403)', nonOwnerDisband.status === 403);
+const ownerDisband = await api('POST', `/conversations/${g2Id}/disband`, { token: A });
+ok('群主解散成功', ownerDisband.status === 200 && ownerDisband.json?.ok === true);
+const bRemovedEvt = await waitFor(bWs.events, 'conversation:removed', (d) => d?.conversationId === g2Id);
+ok('成员收到「群已解散」通知', !!bRemovedEvt && bRemovedEvt.reason === 'disbanded');
+const bListAfter = await api('GET', '/conversations', { token: B });
+ok('解散后群从列表消失', !(bListAfter.json?.conversations ?? []).some((x) => x.id === g2Id));
+const bSendAfterDisband = await api('POST', `/conversations/${g2Id}/messages`, {
+  token: B, body: { content: '群没了' },
+});
+ok('解散后无法发消息(404)', bSendAfterDisband.status === 404);
+bWs.ws.close();
+
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 
 console.log(`\n===== RESULT: ${pass} passed, ${fail} failed =====`);

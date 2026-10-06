@@ -245,6 +245,19 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  /// 群是否已不属于我（被解散 / 我已退出）→ 输入区换成提示。
+  bool get _goneFromList {
+    final s = _state;
+    if (s == null || !widget.conversation.isGroup) return false;
+    return !s.conversations.any((c) => c.id == convId);
+  }
+
+  void _popToChats() {
+    if (!mounted) return;
+    final nav = Navigator.of(context);
+    nav.pop();
+  }
+
   Future<void> _confirmRecall(Message m) async {
     final s = context.read<AppState>();
     final ok = await showDialog<bool>(
@@ -367,7 +380,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: _TypingDots(),
               ),
             ),
-          SafeArea(
+          if (_goneFromList)
+            _LeftGroupBar(onBack: _popToChats)
+          else
+            SafeArea(
             top: false,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -398,6 +414,41 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LeftGroupBar extends StatelessWidget {
+  final VoidCallback onBack;
+  const _LeftGroupBar({required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          border: Border(top: BorderSide(color: Colors.grey.shade200)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '你已不在这个群聊里',
+              style: TextStyle(fontSize: 13.5, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back, size: 18),
+              label: const Text('返回聊天列表'),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -553,6 +553,24 @@ class AppState extends ChangeNotifier {
       case 'conversation:new':
       case 'conversation:update':
         unawaited(refreshConversations());
+      case 'conversation:removed':
+        if (data is Map) {
+          final cid = data['conversationId'] as String?;
+          if (cid != null) {
+            _dropConversation(cid);
+            final name = data['name'] as String? ?? '';
+            final reason = data['reason'] as String? ?? '';
+            if (reason == 'disbanded' && name.isNotEmpty && appInForeground) {
+              unawaited(AppNotifications.showMessage(
+                title: '群聊已解散',
+                body: '「$name」已被群主解散',
+                id: cid.hashCode & 0x7fffffff,
+              ));
+            }
+          }
+        }
+      case 'conversation:memberLeft':
+        unawaited(refreshConversations());
       case 'announce:new':
         if (data is Map && data['announcement'] is Map) {
           final a = Announcement.fromJson(
@@ -619,6 +637,26 @@ class AppState extends ChangeNotifier {
   void _sortConversations() {
     conversations.sort((a, b) =>
         (b.lastMessage?.createdAt ?? 0).compareTo(a.lastMessage?.createdAt ?? 0));
+  }
+
+  /// 会话从我的列表里消失（退群 / 被解散）。
+  void _dropConversation(String conversationId) {
+    conversations.removeWhere((c) => c.id == conversationId);
+    chatMessages.remove(conversationId);
+    if (activeChatId == conversationId) activeChatId = null;
+    notifyListeners();
+  }
+
+  /// 退出群聊（成功后从列表移除）。
+  Future<void> leaveGroup(String conversationId) async {
+    await api.leaveGroup(conversationId);
+    _dropConversation(conversationId);
+  }
+
+  /// 解散群聊（群主）。
+  Future<void> disbandGroup(String conversationId) async {
+    await api.disbandGroup(conversationId);
+    _dropConversation(conversationId);
   }
 
   // -------------------------------------------------------- data refresh

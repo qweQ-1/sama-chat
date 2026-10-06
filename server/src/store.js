@@ -35,6 +35,7 @@ for (const u of db.data.users) {
   u.phone ??= '';
   u.email ??= '';
   u.seenAnns ??= []; // 已读公告 id（每人每条只弹一次）
+  u.leftConvs ??= []; // 退过的群 id（供清理本地幽灵群）
 }
 
 export const newId = (prefix = '') => (prefix ? `${prefix}_` : '') + nanoid(12);
@@ -163,6 +164,11 @@ export function ensurePrivateConversation(a, b) {
 
 export function conversationsOf(userId) {
   return db.data.conversations.filter((c) => c.memberIds.includes(userId));
+}
+
+/** 该群的前成员（退过群的人）：服务器删掉他们本地残留的「幽灵群」。 */
+export function formerMembersOf(convId) {
+  return db.data.users.filter((u) => (u.leftConvs ?? []).includes(convId));
 }
 
 export function lastMessageOf(conversationId) {

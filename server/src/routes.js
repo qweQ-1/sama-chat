@@ -17,6 +17,7 @@ import {
   ensurePrivateConversation,
   conversationsOf,
   lastMessageOf,
+  formerMembersOf,
   save,
 } from './store.js';
 import fs from 'node:fs';
@@ -309,6 +310,16 @@ export function registerApiRoutes(app, io) {
 
   // ---------- conversations & messages ----------
   app.get('/conversations', { preHandler: app.auth }, async (req) => {
+    // 兜底清理：用户退过的群若已不存在（被解散），把记录清掉
+    const me = findUserById(req.userId);
+    const left = me?.leftConvs ?? [];
+    const gone = left.filter(
+      (id) => !db.data.conversations.some((c) => c.id === id),
+    );
+    if (gone.length > 0 && me) {
+      me.leftConvs = left.filter((id) => !gone.includes(id));
+      await save();
+    }
     const list = conversationsOf(req.userId).map((c) => {
       const last = lastMessageOf(c.id);
       let title;
@@ -348,9 +359,82 @@ export function registerApiRoutes(app, io) {
     if (!findUserById(peerId)) {
       return reply.code(404).send({ error: 'not_found', message: '用户不存在' });
     }
+    // 若这是某个群的前成员，重新私聊要把「已退出/已解散」标记清掉
     const conv = ensurePrivateConversation(req.userId, peerId);
     await save();
     return { conversation: conv };
+  });
+
+  // 解散群聊（仅群主；所有人失去该群）
+  app.post('/conversations/:id/disband', { preHandler: app.auth }, async (req, reply) => {
+    const idx = db.data.conversations.findIndex((c) => c.id === req.params.id);
+    if (idx < 0) {
+      return reply.code(404).send({ error: 'not_found', message: '群聊不存在' });
+    }
+    const conv = db.data.conversations[idx];
+    if (conv.type !== 'group') {
+      return reply.code(400).send({ error: 'not_group', message: '不是群聊' });
+    }
+    if (conv.ownerId !== req.userId) {
+      return reply.code(403).send({ error: 'forbidden', message: '只有群主可以解散群聊' });
+    }
+    const members = [...conv.memberIds];
+    db.data.messages = db.data.messages.filter((m) => m.conversationId !== conv.id);
+    db.data.conversations.splice(idx, 1);
+    // 所有收到过这个群的人（含已退出的）都要清掉本地残留
+    const targets = new Set(members);
+    for (const u of formerMembersOf(conv.id)) targets.add(u.id);
+    for (const u of db.data.users) {
+      if (Array.isArray(u.leftConvs)) {
+        u.leftConvs = u.leftConvs.filter((id) => id !== conv.id);
+      }
+    }
+    await save();
+    for (const m of targets) {
+      io?.toUser(m, 'conversation:removed', {
+        conversationId: conv.id,
+        reason: 'disbanded',
+        name: conv.name,
+      });
+    }
+    return { ok: true };
+  });
+
+  // 退出群聊（群主不可直接退；需先转让或解散）
+  app.post('/conversations/:id/leave', { preHandler: app.auth }, async (req, reply) => {
+    const conv = db.data.conversations.find((c) => c.id === req.params.id);
+    if (!conv || conv.type !== 'group') {
+      return reply.code(404).send({ error: 'not_found', message: '群聊不存在' });
+    }
+    if (!conv.memberIds.includes(req.userId)) {
+      return reply.code(400).send({ error: 'not_member', message: '你不在这个群里' });
+    }
+    if (conv.ownerId === req.userId) {
+      return reply
+        .code(403)
+        .send({ error: 'owner_cannot_leave', message: '群主不能直接退群，请先转让群主或解散群聊' });
+    }
+    conv.memberIds = conv.memberIds.filter((m) => m !== req.userId);
+    conv.adminIds = (conv.adminIds ?? []).filter((m) => m !== req.userId);
+    delete (conv.mutes ?? {})[req.userId];
+    // 记录「退过的群」，供服务器清理本地残留
+    const me = findUserById(req.userId);
+    if (me) me.leftConvs = [...new Set([...(me.leftConvs ?? []), conv.id])].slice(-50);
+    await save();
+    for (const m of conv.memberIds) {
+      io?.toUser(m, 'conversation:update', { conversation: conv });
+      io?.toUser(m, 'conversation:memberLeft', {
+        conversationId: conv.id,
+        userId: req.userId,
+        name: me?.displayName ?? '',
+      });
+    }
+    io?.toUser(req.userId, 'conversation:removed', {
+      conversationId: conv.id,
+      reason: 'left',
+      name: conv.name,
+    });
+    return { ok: true };
   });
 
   app.post('/conversations/group', { preHandler: app.auth }, async (req, reply) => {

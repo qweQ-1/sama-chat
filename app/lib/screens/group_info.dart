@@ -366,9 +366,117 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                         fontSize: 12.5, color: Colors.grey, height: 1.6),
                   ),
                 ),
+                const SizedBox(height: 8),
+                const Divider(),
+                // 退出 / 解散群聊
+                if (!_amOwner)
+                  ListTile(
+                    leading: const Icon(Icons.logout, color: Colors.redAccent),
+                    title: const Text('退出群聊',
+                        style: TextStyle(color: Colors.redAccent)),
+                    onTap: _loading ? null : _confirmLeave,
+                  )
+                else ...[
+                  ListTile(
+                    leading: const Icon(Icons.group_off_outlined,
+                        color: Colors.redAccent),
+                    title: const Text('解散群聊',
+                        style: TextStyle(color: Colors.redAccent)),
+                    subtitle: const Text('所有成员都会失去这个群（不可恢复）',
+                        style: TextStyle(fontSize: 12)),
+                    onTap: _loading ? null : _confirmDisband,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Text(
+                      '群主不能直接退群：想让群继续存在，请先在成员里「转让群主」。',
+                      style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
               ],
             ),
     );
+  }
+
+  /// 退出群聊（普通成员）。
+  Future<void> _confirmLeave() async {
+    final c = _conv ?? widget.conversation;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('退出群聊'),
+        content: Text('确定退出「${c.name}」吗？\n退出后将不再收到该群消息。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('退出'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final s = context.read<AppState>();
+    final nav = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await s.leaveGroup(c.id);
+      // 关掉群信息页 + 聊天页，回到会话列表
+      nav.pop(); // group info
+      if (nav.canPop()) nav.pop(); // chat
+      messenger.showSnackBar(SnackBar(
+        content: Text('已退出「${c.name}」'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } on ApiException catch (e) {
+      if (mounted) showError(context, e.message);
+    } catch (e) {
+      if (mounted) showError(context, '退出失败：$e');
+    }
+  }
+
+  /// 解散群聊（群主）。
+  Future<void> _confirmDisband() async {
+    final c = _conv ?? widget.conversation;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('解散群聊'),
+        content: Text(
+            '确定解散「${c.name}」吗？\n\n所有成员都会立即失去这个群，聊天记录也会被清除，且无法恢复。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('解散'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final s = context.read<AppState>();
+    final nav = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await s.disbandGroup(c.id);
+      nav.pop();
+      if (nav.canPop()) nav.pop();
+      messenger.showSnackBar(SnackBar(
+        content: Text('「${c.name}」已解散'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } on ApiException catch (e) {
+      if (mounted) showError(context, e.message);
+    } catch (e) {
+      if (mounted) showError(context, '解散失败：$e');
+    }
   }
 }

@@ -1,7 +1,7 @@
 name: samachat
 description: "sama-chat — 私聊 · 群聊 · 炫圈，轻量实时聊天应用"
 publish_to: 'none'
-version: 1.10.0+15
+version: 2.0.0+15
 
 environment:
   sdk: ">=3.5.0 <4.0.0"

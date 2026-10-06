@@ -70,15 +70,41 @@ class AppState extends ChangeNotifier {
       try {
         me = await api.me();
         _afterLogin();
+      } on ApiException catch (e) {
+        if (e.status == 401) {
+          // 登录态已失效：清除，需要重新登录
+          token = null;
+          api.token = null;
+          await _prefs!.remove('token');
+        } else {
+          // 服务器暂时不可达：保留登录态，后台自动重试恢复
+          unawaited(_retryRestoreSession());
+        }
       } catch (_) {
-        // token invalid or server unreachable — keep it; user can re-login
-        token = null;
-        api.token = null;
-        await _prefs!.remove('token');
+        unawaited(_retryRestoreSession());
       }
     }
     booted = true;
     notifyListeners();
+  }
+
+  /// 启动时服务器暂时不可达：保留登录态并静默重试，网络恢复后自动回到聊天。
+  Future<void> _retryRestoreSession() async {
+    for (var i = 0; i < 40; i++) {
+      await Future<void>.delayed(const Duration(seconds: 8));
+      if (token == null || me != null) return;
+      try {
+        me = await api.me();
+        _afterLogin();
+        notifyListeners();
+        return;
+      } on ApiException catch (e) {
+        if (e.status == 401) {
+          await logout();
+          return;
+        }
+      } catch (_) {}
+    }
   }
 
   // ---------------------------------------------------------------- auth

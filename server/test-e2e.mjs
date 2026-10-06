@@ -480,6 +480,20 @@ const annEmpty = await api('POST', '/announce', { token: H, body: { content: '  
 ok('空公告被拒(400)', annEmpty.status === 400);
 annWatcher.ws.close();
 
+console.log('\n== 18. 表情消息（sticker 类型）==');
+const stUp = await api('POST', '/upload', { token: A, body: { data: pngB64, ext: 'png' } });
+ok('表情图片上传成功', stUp.status === 200 && !!stUp.json?.url);
+const stMsg = await api('POST', `/conversations/${convId}/messages`, {
+  token: A, body: { content: stUp.json.url, type: 'sticker' },
+});
+ok('发送表情消息(type=sticker)', stMsg.status === 200 && stMsg.json?.message?.type === 'sticker');
+const stHist = await api('GET', `/conversations/${convId}/messages`, { token: B });
+ok('历史里表情类型保留', stHist.json?.messages?.some((m) => m.type === 'sticker' && m.content === stUp.json.url));
+const weirdMsg = await api('POST', `/conversations/${convId}/messages`, {
+  token: A, body: { content: 'x', type: 'weird' },
+});
+ok('非法类型回退为文本', weirdMsg.status === 200 && weirdMsg.json?.message?.type === 'text');
+
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 
 console.log(`\n===== RESULT: ${pass} passed, ${fail} failed =====`);

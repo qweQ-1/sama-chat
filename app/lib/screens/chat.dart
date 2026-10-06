@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -11,6 +12,7 @@ import '../models.dart';
 import '../store.dart';
 import '../widgets.dart';
 import 'group_info.dart';
+import 'sticker_panel.dart';
 import 'video_viewer.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -23,6 +25,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _input = TextEditingController();
+  bool _showPanel = false; // 表情面板展开中
   final _picker = ImagePicker();
   AppState? _state;
   Timer? _typingTimer;
@@ -90,6 +93,34 @@ class _ChatScreenState extends State<ChatScreen> {
       await s.sendText(convId, text);
     } on ApiException catch (e) {
       if (mounted) showError(context, e.message);
+    }
+  }
+
+  /// 在输入框光标处插入一个表情。
+  void _insertEmoji(String e) {
+    final text = _input.text;
+    final sel = _input.selection;
+    if (sel.isValid && sel.start >= 0 && sel.end >= sel.start) {
+      final newText = text.replaceRange(sel.start, sel.end, e);
+      _input.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: sel.start + e.length),
+      );
+    } else {
+      _input.text = text + e;
+      _input.selection = TextSelection.collapsed(offset: _input.text.length);
+    }
+  }
+
+  /// 发送自定义表情（小图，上传后以 sticker 类型发出）。
+  Future<void> _sendSticker(Uint8List bytes, String ext) async {
+    final s = context.read<AppState>();
+    try {
+      await s.sendSticker(convId, bytes, ext);
+    } on ApiException catch (e) {
+      if (mounted) showError(context, e.message);
+    } catch (_) {
+      if (mounted) showError(context, '表情发送失败，请重试');
     }
   }
 
@@ -315,12 +346,33 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: _TypingDots(),
               ),
             ),
-          _InputBar(
+          SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _InputBar(
             controller: _input,
             onChanged: _onInputChanged,
             onSend: _send,
             onAttach: _pickAttachment,
             sendingMedia: _sendingMedia,
+            panelOpen: _showPanel,
+            onToggleEmoji: () => setState(() {
+              _showPanel = !_showPanel;
+              if (_showPanel) FocusScope.of(context).unfocus();
+            }),
+            onFieldTap: () {
+              if (_showPanel) setState(() => _showPanel = false);
+            },
+          ),
+          if (_showPanel)
+            StickerPanel(
+              onEmoji: _insertEmoji,
+              onSticker: _sendSticker,
+            ),
+              ],
+            ),
           ),
         ],
       ),
@@ -334,6 +386,9 @@ class _InputBar extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onAttach;
   final bool sendingMedia;
+  final bool panelOpen;
+  final VoidCallback onToggleEmoji;
+  final VoidCallback onFieldTap;
 
   const _InputBar({
     required this.controller,
@@ -341,14 +396,15 @@ class _InputBar extends StatelessWidget {
     required this.onSend,
     required this.onAttach,
     required this.sendingMedia,
+    required this.panelOpen,
+    required this.onToggleEmoji,
+    required this.onFieldTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
           border: Border(top: BorderSide(color: Colors.grey.shade200)),
@@ -369,12 +425,24 @@ class _InputBar extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 onChanged: onChanged,
+                onTap: onFieldTap,
                 minLines: 1,
                 maxLines: 4,
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
                   hintText: '发消息…',
                   isDense: true,
+                  suffixIcon: IconButton(
+                    onPressed: onToggleEmoji,
+                    visualDensity: VisualDensity.compact,
+                    tooltip: panelOpen ? '收起表情' : '表情',
+                    icon: Icon(
+                      panelOpen
+                          ? Icons.keyboard_alt_outlined
+                          : Icons.emoji_emotions_outlined,
+                      size: 22,
+                    ),
+                  ),
                   filled: true,
                   fillColor: Theme.of(context).brightness == Brightness.light
                       ? Colors.grey.shade100
@@ -395,8 +463,7 @@ class _InputBar extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -442,6 +509,21 @@ class _Bubble extends StatelessWidget {
 
     Widget content = message.isVideo
         ? _videoBubble(context, message)
+        : message.isSticker
+        ? NetImage(
+            url: message.content,
+            width: 132,
+            height: 132,
+            fit: BoxFit.contain,
+            errorBuilder: (_) => const SizedBox(
+              width: 132,
+              height: 132,
+              child: Center(
+                child: Icon(Icons.broken_image_outlined,
+                    color: Colors.grey, size: 32),
+              ),
+            ),
+          )
         : message.isImage
         ? ClipRRect(
             borderRadius: BorderRadius.circular(12),

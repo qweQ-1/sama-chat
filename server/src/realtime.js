@@ -115,7 +115,7 @@ export function createIo(app) {
         conversationId: conv.id,
         senderId: userId,
         sender: publicUser(findUserById(userId)),
-        type: data?.type === 'image' ? 'image' : 'text',
+        type: ['image', 'video', 'sticker'].includes(data?.type) ? data.type : 'text',
         content: String(data?.content ?? '').slice(0, 4000),
         createdAt: now(),
         readBy: [userId],

@@ -242,6 +242,7 @@ String previewOf(Message? m, String? myId) {
   if (m == null) return '';
   final who = (myId != null && m.senderId == myId) ? '我: ' : '';
   if (m.recalled) return '$who[已撤回]';
+  if (m.isSticker) return '$who[表情]';
   if (m.isImage) return '$who[图片]';
   if (m.isVideo) return '$who[视频]';
   return '$who${m.content}';

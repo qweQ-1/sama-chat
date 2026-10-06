@@ -426,7 +426,9 @@ class AppState extends ChangeNotifier {
         break;
       }
     }
-    final body = msg.isImage ? '[图片]' : (msg.isVideo ? '[视频]' : msg.content);
+    final body = msg.isSticker
+        ? '[表情]'
+        : (msg.isImage ? '[图片]' : (msg.isVideo ? '[视频]' : msg.content));
     unawaited(AppNotifications.showMessage(
       title: title,
       body: body,
@@ -729,6 +731,14 @@ class AppState extends ChangeNotifier {
   Future<Message> sendVideo(String conversationId, Uint8List bytes, String ext) async {
     final url = await api.uploadVideo(bytes, _normVideoExt(ext));
     final msg = await api.sendMessage(conversationId, content: url, type: 'video');
+    _appendMessage(msg);
+    return msg;
+  }
+
+  /// 发送自定义表情（小图；以 sticker 类型发出，对方以小号展示）。
+  Future<Message> sendSticker(String conversationId, Uint8List bytes, String ext) async {
+    final url = await api.uploadImage(bytes, _normExt(ext));
+    final msg = await api.sendMessage(conversationId, content: url, type: 'sticker');
     _appendMessage(msg);
     return msg;
   }

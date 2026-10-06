@@ -583,7 +583,7 @@ export function registerApiRoutes(app, io) {
       conversationId: conv.id,
       senderId: req.userId,
       sender: publicUser(findUserById(req.userId)),
-      type: ['image', 'video'].includes(req.body?.type) ? req.body.type : 'text',
+      type: ['image', 'video', 'sticker'].includes(req.body?.type) ? req.body.type : 'text',
       content,
       createdAt: now(),
       readBy: [req.userId],

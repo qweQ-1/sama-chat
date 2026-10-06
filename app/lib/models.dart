@@ -76,6 +76,7 @@ class Message {
 
   bool get isImage => type == 'image';
   bool get isVideo => type == 'video';
+  bool get isSticker => type == 'sticker';
 
   factory Message.fromJson(Map<String, dynamic> j) => Message(
         id: j['id'] as String,

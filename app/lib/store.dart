@@ -47,6 +47,9 @@ class AppState extends ChangeNotifier {
   /// 自动检查更新间隔（分钟；0=关闭后台检查；默认 2 小时）。
   int updateIntervalMinutes = 120;
 
+  /// 启动时自动检查更新（排查连接问题时可关闭）。
+  bool checkUpdateOnLaunchEnabled = true;
+
   /// 后台/定时检查发现的新版本，等界面回到前台弹窗。
   UpdateInfo? pendingUpdate;
   Timer? _updateTimer;
@@ -66,6 +69,7 @@ class AppState extends ChangeNotifier {
     notificationsEnabled = _prefs!.getBool('notifications') ?? true;
     keepAliveEnabled = _prefs!.getBool('keepAlive') ?? true;
     updateIntervalMinutes = _prefs!.getInt('updateIntervalMinutes') ?? 120;
+    checkUpdateOnLaunchEnabled = _prefs!.getBool('updateCheckOnLaunch') ?? true;
     unawaited(_syncServerTime());
     token = _prefs!.getString('token');
     if (token != null && token!.isNotEmpty) {
@@ -273,9 +277,17 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// 每次进入 App 时检查一次更新。
+  /// 每次进入 App 时检查一次更新（可在「我」页关闭）。
   Future<void> checkUpdateOnLaunch() async {
+    if (!checkUpdateOnLaunchEnabled) return;
     _handleFoundUpdate(await Updater.check());
+  }
+
+  /// 开关「启动时自动检查更新」。
+  Future<void> setCheckUpdateOnLaunch(bool v) async {
+    checkUpdateOnLaunchEnabled = v;
+    await _prefs?.setBool('updateCheckOnLaunch', v);
+    notifyListeners();
   }
 
   Future<void> _timedUpdateCheck() async {
@@ -286,7 +298,7 @@ class AppState extends ChangeNotifier {
   void _handleFoundUpdate(UpdateInfo? info) {
     if (info == null || pendingUpdate != null) return;
     pendingUpdate = info;
-    if (!appInForeground) {
+    if (!appInForeground && notificationsEnabled) {
       unawaited(AppNotifications.showMessage(
         title: '发现新版本 v${info.version}',
         body: '点开「萨摩聊天」更新吧',

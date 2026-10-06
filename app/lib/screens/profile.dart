@@ -354,23 +354,31 @@ class ProfileTab extends StatelessWidget {
           ),
           ListTile(
             leading: const Icon(Icons.schedule_outlined),
-            title: const Text('自动检查更新'),
+            title: const Text('自动检查更新（后台定时）'),
             subtitle: Text(
-              '每次进入自动检查 · ${_intervalLabel(s.updateIntervalMinutes)}',
+              _intervalLabel(s.updateIntervalMinutes),
               style: const TextStyle(fontSize: 12),
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _pickUpdateInterval(context),
           ),
+          SwitchListTile(
+            secondary: const Icon(Icons.rocket_launch_outlined),
+            title: const Text('启动时检查更新'),
+            subtitle: const Text('每次进入应用自动检测一次新版本（排查问题时可以逐个关闭/开启）',
+                style: TextStyle(fontSize: 12)),
+            value: s.checkUpdateOnLaunchEnabled,
+            onChanged: (v) => s.setCheckUpdateOnLaunch(v),
+          ),
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('${AppConfig.appName} v2.2.2',
+            subtitle: const Text('${AppConfig.appName} v2.2.3',
                 style: TextStyle(fontSize: 12)),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: AppConfig.appName,
-              applicationVersion: '2.2.2',
+              applicationVersion: '2.2.3',
               children: const [
                 Text('一个轻量的实时聊天应用：私聊、群聊、炫圈、面对面扫码加好友。'),
               ],

@@ -64,16 +64,6 @@ class _DesktopShellState extends State<DesktopShell>
     }
   }
 
-  Future<void> _maybeAutoCheckUpdate() async {
-    try {
-      if (!await Updater.shouldAutoCheck()) return;
-      final info = await Updater.check();
-      if (info != null && mounted) {
-        await showUpdateDialog(context, info);
-      }
-    } catch (_) {}
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();

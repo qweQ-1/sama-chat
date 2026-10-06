@@ -23,7 +23,8 @@ class UpdateInfo {
   final String pageUrl;
   final String? apkUrl;
   final String? ipaUrl;
-  final String? zipUrl; // Windows 桌面版压缩包
+  final String? zipUrl; // Windows 桌面版压缩包（旧格式，兼容用）
+  final String? setupUrl; // Windows 安装包（setup.exe）
 
   UpdateInfo({
     required this.version,
@@ -32,6 +33,7 @@ class UpdateInfo {
     this.apkUrl,
     this.ipaUrl,
     this.zipUrl,
+    this.setupUrl,
   });
 }
 
@@ -69,6 +71,7 @@ class Updater {
       String? apk;
       String? ipa;
       String? zip;
+      String? setup;
       for (final a in (j['assets'] as List? ?? const <dynamic>[])) {
         if (a is! Map) continue;
         final name = a['name'] as String? ?? '';
@@ -77,6 +80,7 @@ class Updater {
         if (name.endsWith('.apk')) apk = url;
         if (name.endsWith('.ipa')) ipa = url;
         if (name.endsWith('.zip')) zip = url;
+        if (name.endsWith('.exe')) setup = url;
       }
       return UpdateInfo(
         version: tag,
@@ -86,6 +90,7 @@ class Updater {
         apkUrl: apk,
         ipaUrl: ipa,
         zipUrl: zip,
+        setupUrl: setup,
       );
     } catch (_) {
       return null;
@@ -271,16 +276,19 @@ void _toast(BuildContext context, String msg) {
   );
 }
 
-/// Windows / macOS / Linux：下载更新压缩包到「下载」文件夹。
+/// Windows / macOS / Linux：下载更新（优先新版安装包 setup.exe，兼容旧 zip）。
 Future<void> _updateDesktop(BuildContext context, UpdateInfo info) async {
+  final setupUrl = info.setupUrl;
   final zipUrl = info.zipUrl;
-  if (zipUrl == null) {
+  if (setupUrl == null && zipUrl == null) {
     try {
       await launchUrl(Uri.parse(info.pageUrl),
           mode: LaunchMode.externalApplication);
     } catch (_) {}
     return;
   }
+  final useSetup = setupUrl != null;
+  final downloadUrl = useSetup ? setupUrl : zipUrl!;
 
   final progress = ValueNotifier<double>(0);
   var cancelled = false;
@@ -321,10 +329,15 @@ Future<void> _updateDesktop(BuildContext context, UpdateInfo info) async {
   );
 
   try {
-    final dir = await getDownloadsDirectory() ?? await getTemporaryDirectory();
-    final file = File('${dir.path}/SamaChat-${info.version}-windows.zip');
+    final dir = useSetup
+        ? await getTemporaryDirectory()
+        : (await getDownloadsDirectory() ?? await getTemporaryDirectory());
+    final fileName = useSetup
+        ? 'SamaChat-${info.version}-setup.exe'
+        : 'SamaChat-${info.version}-windows.zip';
+    final file = File('${dir.path}/$fileName');
     final client = http.Client();
-    final req = http.Request('GET', Uri.parse(_accelerated(zipUrl)));
+    final req = http.Request('GET', Uri.parse(_accelerated(downloadUrl)));
     final res = await client.send(req).timeout(const Duration(seconds: 30));
     if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
     final total = res.contentLength ?? 0;
@@ -349,13 +362,30 @@ Future<void> _updateDesktop(BuildContext context, UpdateInfo info) async {
       dialogOpen = false;
       Navigator.pop(context);
     }
-    if (context.mounted) {
+    if (!context.mounted) return;
+    if (useSetup) {
+      // 直接启动安装程序：一路「下一步」即完成覆盖升级（安装文件夹保持不变）
+      await Process.start(file.path, const [], mode: ProcessStartMode.detached);
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('安装程序已打开 🎉'),
+          content: const Text(
+              '按提示点「下一步」即可完成更新：\n\n· 安装时本应用会自动关闭并重新打开\n· 安装文件夹保持不变，聊天记录不会丢\n· 之后每次更新都一样，一路下一步就行'),
+          actions: [
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('好的')),
+          ],
+        ),
+      );
+    } else {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('更新包下载完成 🎉'),
           content: Text(
-              '已保存到「下载」文件夹：\nSamaChat-${info.version}-windows.zip\n\n关闭本应用后，把它解压并覆盖原文件夹，再打开就完成更新啦～'),
+              '已保存到「下载」文件夹：\n${file.path}\n\n关闭本应用后，把它解压并覆盖原文件夹，再打开就完成更新啦～'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx),

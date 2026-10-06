@@ -92,14 +92,14 @@ jobs:
           VERSION="${{ steps.meta.outputs.version }}"
           APK="$(find . -name '*.apk' | head -1)"
           IPA="$(find . -name '*.ipa' | head -1)"
-          ZIP="$(find . -name '*.zip' | head -1)"
+          SETUP="$(find . -name '*setup*.exe' | head -1)"
           if [ -n "$APK" ]; then mv "$APK" "SamaChat-${VERSION}.apk"; fi
           if [ -n "$IPA" ]; then mv "$IPA" "SamaChat-${VERSION}-unsigned.ipa"; fi
-          if [ -n "$ZIP" ]; then mv "$ZIP" "SamaChat-${VERSION}-windows.zip"; fi
+          if [ -n "$SETUP" ]; then mv "$SETUP" "SamaChat-${VERSION}-setup.exe"; fi
           ls -la
           test -f "SamaChat-${VERSION}.apk"
           test -f "SamaChat-${VERSION}-unsigned.ipa"
-          test -f "SamaChat-${VERSION}-windows.zip"
+          test -f "SamaChat-${VERSION}-setup.exe"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -110,5 +110,5 @@ jobs:
           files: |
             dist/SamaChat-*.apk
             dist/SamaChat-*-unsigned.ipa
-            dist/SamaChat-*-windows.zip
+            dist/SamaChat-*-setup.exe
           fail_on_unmatched_files: true

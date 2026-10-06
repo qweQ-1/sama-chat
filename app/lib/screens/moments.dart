@@ -41,7 +41,12 @@ class MomentsTab extends StatelessWidget {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.only(bottom: 24),
                 itemCount: s.moments.length,
-                itemBuilder: (context, i) => MomentCard(moment: s.moments[i]),
+                itemBuilder: (context, i) => Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
+                    child: MomentCard(moment: s.moments[i]),
+                  ),
+                ),
               ),
       ),
     );

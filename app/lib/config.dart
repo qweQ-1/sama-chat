@@ -1,3 +1,7 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+
 /// App-wide configuration.
 class AppConfig {
   /// Default server address baked into the build.
@@ -10,3 +14,7 @@ class AppConfig {
 
   static const String appName = '萨摩聊天';
 }
+
+/// 是否为桌面平台（Windows / macOS / Linux）。
+bool get isDesktopPlatform =>
+    !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);

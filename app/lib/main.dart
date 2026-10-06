@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'config.dart';
+import 'screens/desktop.dart';
 import 'screens/home.dart';
 import 'screens/login.dart';
 import 'store.dart';
@@ -60,6 +61,6 @@ class RootGate extends StatelessWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (s.token == null || s.me == null) return const LoginScreen();
-    return const HomeScreen();
+    return isDesktopPlatform ? const DesktopShell() : const HomeScreen();
   }
 }

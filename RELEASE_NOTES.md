@@ -1,18 +1,20 @@
-# 萨摩聊天 v1.9.0
+# 萨摩聊天 v1.10.0
 
-## 本次更新
+## 本次更新（Windows 桌面版专属）
 
-- 🖥️ **Windows 桌面版来啦！**
-  - 下载 `SamaChat-1.9.0-windows.zip` → 解压到任意文件夹 → 双击 `samachat.exe` 就能用
-  - 与手机同账号互通：私聊、群聊、图片、视频播放、炫圈全支持
-  - 首次打开如果出现 SmartScreen 提示 → 点「更多信息」→「仍要运行」即可（无签名软件的正常提示）
-  - 说明：桌面版不支持摄像头扫码（加好友用手机扫）；桌面版无需后台保活
-- 📱 Android / iOS 版同步更新到 1.9.0（内容与 1.8.0 相同 + 桌面兼容维护）
+- 🖥️ **全新桌面专属界面 —— 三栏式布局**（类微信 / QQ 桌面版）
+  - 左侧导航栏：头像 · 消息 · 通讯录 · 炫圈 · 我
+  - 消息页：左边会话列表 + 右边聊天窗，点会话直接在右侧聊天，不再整页跳转
+  - 炫圈动态居中美化，更符合桌面浏览习惯
+- 🔔 **Windows 系统通知来啦**：收到新消息 / 好友请求时，会弹出 Windows 系统通知（屏幕右下角）
+  - 首次使用会自动创建一个开始菜单快捷方式（Windows 系统通知机制的要求，可忽略）
+  - 不想要通知：「我 → 消息通知」随时关掉
+- 📱 手机端界面保持原样（仅内核同步更新，Android / iOS 照常覆盖升级）
 
 ## 安装
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| 🖥️ Windows | `SamaChat-1.9.0-windows.zip` | 解压即用，双击 samachat.exe |
-| 🤖 Android | `SamaChat-1.9.0.apk` | 覆盖安装升级 |
-| 🍎 iOS | `SamaChat-1.9.0-unsigned.ipa` | 自签安装（AltStore / Sideloadly / 轻松签） |
+| 🖥️ Windows | `SamaChat-1.10.0-windows.zip` | 解压即用，双击 samachat.exe |
+| 🤖 Android | `SamaChat-1.10.0.apk` | 覆盖升级 |
+| 🍎 iOS | `SamaChat-1.10.0-unsigned.ipa` | 自签安装（AltStore / Sideloadly / 轻松签） |

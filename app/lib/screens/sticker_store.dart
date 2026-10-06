@@ -161,7 +161,7 @@ class _StickerStoreScreenState extends State<StickerStoreScreen> {
                             color: Colors.orange),
                         title: Text('商店加载失败：$_error',
                             style: const TextStyle(fontSize: 13)),
-                        subtitle: const Text('需要服务器更新到 v2.0.5 才支持表情商店',
+                        subtitle: const Text('需要服务器更新到 v2.1.0 才支持表情商店',
                             style: TextStyle(fontSize: 12)),
                         trailing: TextButton(
                             onPressed: _load, child: const Text('重试')),

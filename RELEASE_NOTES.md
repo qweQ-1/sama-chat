@@ -1,4 +1,4 @@
-# 萨摩聊天 v2.0.5
+# 萨摩聊天 v2.1.0
 
 ## 本次更新：GIF 表情 + 表情商店 🧩
 
@@ -22,6 +22,6 @@
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| 🖥️ Windows | `SamaChat-2.0.5-setup.exe` | 双击安装（覆盖升级）|
-| 🤖 Android | `SamaChat-2.0.5.apk` | 覆盖升级 |
-| 🍎 iOS | `SamaChat-2.0.5-unsigned.ipa` | 自签安装 |
+| 🖥️ Windows | `SamaChat-2.1.0-setup.exe` | 双击安装（覆盖升级）|
+| 🤖 Android | `SamaChat-2.1.0.apk` | 覆盖升级 |
+| 🍎 iOS | `SamaChat-2.1.0-unsigned.ipa` | 自签安装 |

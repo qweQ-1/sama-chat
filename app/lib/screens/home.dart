@@ -30,19 +30,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     context.read<AppState>().handleResume();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<AppState>().checkUpdateOnLaunch();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoCheckUpdate());
   }
 
-  /// 后台/定时检查发现的新版本，回到前台后弹窗。
-  void _maybeShowPendingUpdate(AppState s) {
-    final info = s.pendingUpdate;
-    if (info == null || !s.appInForeground) return;
-    s.pendingUpdate = null;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) showUpdateDialog(context, info);
-    });
+  Future<void> _maybeAutoCheckUpdate() async {
+    try {
+      if (!await Updater.shouldAutoCheck()) return;
+      final info = await Updater.check();
+      if (info != null && mounted) {
+        await showUpdateDialog(context, info);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -56,7 +54,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final s = context.read<AppState>();
     if (state == AppLifecycleState.resumed) {
       s.handleResume();
-      _maybeShowPendingUpdate(s);
     } else if (state == AppLifecycleState.paused) {
       s.handleBackground();
     }
@@ -65,7 +62,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    _maybeShowPendingUpdate(s);
     final totalUnread = s.conversations.fold<int>(0, (a, c) => a + c.unread);
     final requestCount = s.incomingRequests.length;
 

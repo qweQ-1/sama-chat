@@ -13,10 +13,7 @@ const app = Fastify({
   bodyLimit: 8 * 1024 * 1024, // room for base64 image uploads
 });
 
-// 心跳：25 秒一次 ping；15 秒无回应判定掉线并清理（穿透/网络抖动下更稳）
-await app.register(websocket, {
-  options: { pingInterval: 25000, pingTimeout: 15000 },
-});
+await app.register(websocket);
 
 // Treat an empty body on application/json requests as {} — several endpoints
 // (like, read, respond) take no payload but clients may still send the header.

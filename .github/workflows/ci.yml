@@ -128,32 +128,17 @@ jobs:
           SERVER="${SERVER:-https://refrain-tapping-crazy.ngrok-free.dev}"
           flutter build windows --release --dart-define=SAMA_SERVER=$SERVER
 
-      - name: Install Inno Setup
+      - name: Package ZIP
         shell: pwsh
         run: |
-          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) {
-            choco install innosetup -y --no-progress
-          }
+          $dir = "app/build/windows/x64/runner/Release"
+          if (-not (Test-Path $dir)) { $dir = "app/build/windows/runner/Release" }
+          Get-ChildItem $dir | Select-Object Name, Length | Format-Table
+          Compress-Archive -Path (Join-Path $dir '*') -DestinationPath "sama-chat-windows.zip" -Force
 
-      - name: Build Installer (setup.exe)
-        shell: pwsh
-        run: |
-          $p = "ci\windows-installer.iss"
-          # 统一为带 BOM 的 UTF-8，避免中文乱码
-          $c = Get-Content -Raw -Encoding UTF8 $p
-          [IO.File]::WriteAllText((Resolve-Path $p).Path, $c, [Text.UTF8Encoding]::new($true))
-          $line = (Select-String -Path app/pubspec.yaml -Pattern '^version:').Line
-          $ver = ($line -replace 'version:','').Split('+')[0].Trim()
-          Write-Host "installer version: $ver"
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { $iscc = "C:\Program Files\Inno Setup 6\ISCC.exe" }
-          & $iscc "/DMyAppVersion=$ver" $p
-          if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败: $LASTEXITCODE" }
-          Get-ChildItem dist | Select-Object Name, Length | Format-Table
-
-      - name: Upload Installer
+      - name: Upload ZIP
         uses: actions/upload-artifact@v4
         with:
           name: sama-chat-windows
-          path: dist/SamaChat-*-setup.exe
+          path: sama-chat-windows.zip
           if-no-files-found: error

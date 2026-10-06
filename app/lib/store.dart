@@ -13,7 +13,6 @@ import 'keepalive.dart';
 import 'models.dart';
 import 'notifications.dart';
 import 'realtime.dart';
-import 'updater.dart';
 
 class AppState extends ChangeNotifier {
   final Api api = Api(AppConfig.defaultServer);
@@ -44,19 +43,6 @@ class AppState extends ChangeNotifier {
   bool keepAliveEnabled = true;
   bool appInForeground = true;
 
-  /// 自动检查更新间隔（分钟；0=关闭后台检查；默认 2 小时）。
-  int updateIntervalMinutes = 120;
-
-  /// 启动时自动检查更新（排查连接问题时可关闭）。
-  bool checkUpdateOnLaunchEnabled = true;
-
-  /// 后台/定时检查发现的新版本，等界面回到前台弹窗。
-  UpdateInfo? pendingUpdate;
-  Timer? _updateTimer;
-
-  /// 登录态恢复重试彻底失败（显示在「正在连接服务器…」页上）。
-  bool restoreFailed = false;
-
   /// 诊断用：最近一次收到消息的时间。
   DateTime? lastMessageAt;
 
@@ -68,8 +54,6 @@ class AppState extends ChangeNotifier {
     api.base = serverBase;
     notificationsEnabled = _prefs!.getBool('notifications') ?? true;
     keepAliveEnabled = _prefs!.getBool('keepAlive') ?? true;
-    updateIntervalMinutes = _prefs!.getInt('updateIntervalMinutes') ?? 120;
-    checkUpdateOnLaunchEnabled = _prefs!.getBool('updateCheckOnLaunch') ?? true;
     unawaited(_syncServerTime());
     token = _prefs!.getString('token');
     if (token != null && token!.isNotEmpty) {
@@ -77,50 +61,16 @@ class AppState extends ChangeNotifier {
       try {
         me = await api.me();
         _afterLogin();
-      } on ApiException catch (e) {
-        if (e.status == 401) {
-          // 登录态已失效：清除，需要重新登录
-          token = null;
-          api.token = null;
-          await _prefs!.remove('token');
-        } else {
-          // 服务器暂时不可达：保留登录态，后台自动重试恢复
-          unawaited(_retryRestoreSession());
-        }
       } catch (_) {
-        unawaited(_retryRestoreSession());
+        // token invalid or server unreachable — keep it; user can re-login
+        token = null;
+        api.token = null;
+        await _prefs!.remove('token');
       }
     }
     booted = true;
     notifyListeners();
   }
-
-  /// 启动时服务器暂时不可达：保留登录态并静默重试（最多 10 分钟），
-  /// 网络恢复后自动回到聊天；彻底失败则显示在「正在连接」页上供手动重试。
-  Future<void> _retryRestoreSession() async {
-    restoreFailed = false;
-    notifyListeners();
-    for (var i = 0; i < 75; i++) {
-      await Future<void>.delayed(const Duration(seconds: 8));
-      if (token == null || me != null) return;
-      try {
-        me = await api.me();
-        _afterLogin();
-        notifyListeners();
-        return;
-      } on ApiException catch (e) {
-        if (e.status == 401) {
-          await logout();
-          return;
-        }
-      } catch (_) {}
-    }
-    restoreFailed = true;
-    notifyListeners();
-  }
-
-  /// 供「正在连接服务器…」页面手动重试。
-  Future<void> retryRestoreSession() => _retryRestoreSession();
 
   // ---------------------------------------------------------------- auth
   Future<void> register({
@@ -203,7 +153,6 @@ class AppState extends ChangeNotifier {
     if (keepAliveEnabled) {
       unawaited(KeepAliveService.start());
     }
-    _startUpdateTimer();
     unawaited(refreshConversations());
     unawaited(refreshFriends());
     unawaited(refreshRequests());
@@ -214,10 +163,6 @@ class AppState extends ChangeNotifier {
   Future<void> logout() async {
     rt.disconnect();
     unawaited(KeepAliveService.stop());
-    _updateTimer?.cancel();
-    _updateTimer = null;
-    pendingUpdate = null;
-    restoreFailed = false;
     token = null;
     api.token = null;
     me = null;
@@ -241,78 +186,19 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------- 通知 / 保活
   Future<void> setNotifications(bool v) async {
     notificationsEnabled = v;
-    notifyListeners(); // 先刷新界面，保存失败/变慢也不影响开关响应
     if (v) unawaited(AppNotifications.requestPermissions());
-    try {
-      await _prefs?.setBool('notifications', v);
-    } catch (_) {}
+    await _prefs?.setBool('notifications', v);
+    notifyListeners();
   }
 
   Future<void> setKeepAlive(bool v) async {
     keepAliveEnabled = v;
-    notifyListeners(); // 先刷新界面
     if (v) {
       unawaited(KeepAliveService.start());
     } else {
       unawaited(KeepAliveService.stop());
     }
-    try {
-      await _prefs?.setBool('keepAlive', v);
-    } catch (_) {}
-  }
-
-  // ------------------------------------------------------- 自动检查更新
-  /// 设置自动检查更新的间隔（分钟；0 = 关闭后台自动检查）。
-  Future<void> setUpdateInterval(int minutes) async {
-    updateIntervalMinutes = minutes;
-    notifyListeners(); // 先刷新界面
-    _startUpdateTimer();
-    try {
-      await _prefs?.setInt('updateIntervalMinutes', minutes);
-    } catch (_) {}
-  }
-
-  void _startUpdateTimer() {
-    _updateTimer?.cancel();
-    _updateTimer = null;
-    final min = updateIntervalMinutes;
-    if (min <= 0) return;
-    _updateTimer = Timer.periodic(
-      Duration(minutes: min),
-      (_) => unawaited(_timedUpdateCheck()),
-    );
-  }
-
-  /// 每次进入 App 时检查一次更新（可在「我」页关闭）。
-  Future<void> checkUpdateOnLaunch() async {
-    if (!checkUpdateOnLaunchEnabled) return;
-    _handleFoundUpdate(await Updater.check());
-  }
-
-  /// 开关「启动时自动检查更新」。
-  Future<void> setCheckUpdateOnLaunch(bool v) async {
-    checkUpdateOnLaunchEnabled = v;
-    notifyListeners(); // 先刷新界面
-    try {
-      await _prefs?.setBool('updateCheckOnLaunch', v);
-    } catch (_) {}
-  }
-
-  Future<void> _timedUpdateCheck() async {
-    _handleFoundUpdate(await Updater.check());
-  }
-
-  /// 发现新版本：前台等界面弹窗；后台先弹系统通知。
-  void _handleFoundUpdate(UpdateInfo? info) {
-    if (info == null || pendingUpdate != null) return;
-    pendingUpdate = info;
-    if (!appInForeground && notificationsEnabled) {
-      unawaited(AppNotifications.showMessage(
-        title: '发现新版本 v${info.version}',
-        body: '点开「萨摩聊天」更新吧',
-        id: 900002,
-      ));
-    }
+    await _prefs?.setBool('keepAlive', v);
     notifyListeners();
   }
 
@@ -322,7 +208,6 @@ class AppState extends ChangeNotifier {
     rt.ensureConnected();
     unawaited(_syncServerTime());
     if (keepAliveEnabled) unawaited(KeepAliveService.start());
-    notifyListeners();
   }
 
   /// App 退到后台。

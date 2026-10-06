@@ -1,7 +1,6 @@
 /// REST client for the sama-chat server.
 library;
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
@@ -31,50 +30,30 @@ class Api {
         if (token != null) 'Authorization': 'Bearer $token',
       };
 
-  /// 服务器地址归一化：去掉尾部斜杠/空格（防止 //path 之类的低级问题）。
-  static String _normBase(String b) {
-    var s = b.trim();
-    while (s.endsWith('/')) {
-      s = s.substring(0, s.length - 1);
-    }
-    return s;
-  }
-
   Future<Map<String, dynamic>> _req(
     String method,
     String path, {
     Map<String, dynamic>? body,
     bool auth = true,
-    Duration timeout = const Duration(seconds: 30),
   }) async {
-    final uri = Uri.parse('${_normBase(base)}$path');
+    final uri = Uri.parse('$base$path');
     late http.Response res;
     try {
       switch (method) {
         case 'GET':
-          res = await _client.get(uri, headers: _headers).timeout(timeout);
+          res = await _client.get(uri, headers: _headers);
         case 'POST':
-          res = await _client
-              .post(uri,
-                  headers: _headers,
-                  body: body != null ? jsonEncode(body) : null)
-              .timeout(timeout);
+          res = await _client.post(uri, headers: _headers, body: body != null ? jsonEncode(body) : null);
         case 'PATCH':
-          res = await _client
-              .patch(uri,
-                  headers: _headers,
-                  body: body != null ? jsonEncode(body) : null)
-              .timeout(timeout);
+          res = await _client.patch(uri, headers: _headers, body: body != null ? jsonEncode(body) : null);
         case 'DELETE':
-          res = await _client.delete(uri, headers: _headers).timeout(timeout);
+          res = await _client.delete(uri, headers: _headers);
         default:
           throw ApiException(0, '不支持的请求方法');
       }
-    } on TimeoutException {
-      throw ApiException(0, '请求超时：网络较慢或服务器未响应，请稍后重试');
     } catch (e) {
       if (e is ApiException) rethrow;
-      throw ApiException(0, '网络连接失败，请检查网络或服务器地址');
+      throw ApiException(0, '网络连接失败，请检查服务器地址');
     }
 
     Map<String, dynamic> json;
@@ -355,14 +334,13 @@ class Api {
   // ---------- upload ----------
   Future<String> uploadImage(Uint8List bytes, String ext) async {
     final j = await _req('POST', '/upload',
-        body: {'data': base64Encode(bytes), 'ext': ext},
-        timeout: const Duration(seconds: 300));
+        body: {'data': base64Encode(bytes), 'ext': ext});
     return j['url'] as String;
   }
 
   /// 视频上传：application/octet-stream 原始二进制（避免 base64 额外开销）。
   Future<String> uploadVideo(Uint8List bytes, String ext) async {
-    final uri = Uri.parse('${_normBase(base)}/upload/video?ext=$ext');
+    final uri = Uri.parse('$base/upload/video?ext=$ext');
     late http.Response res;
     try {
       res = await _client.post(
@@ -373,11 +351,9 @@ class Api {
           if (token != null) 'Authorization': 'Bearer $token',
         },
         body: bytes,
-      ).timeout(const Duration(minutes: 15));
-    } on TimeoutException {
-      throw ApiException(0, '上传超时：网络较慢，请换个网络或稍后重试');
+      );
     } catch (e) {
-      throw ApiException(0, '网络连接失败，请检查网络或服务器地址');
+      throw ApiException(0, '网络连接失败，请检查服务器地址');
     }
     Map<String, dynamic> json;
     try {

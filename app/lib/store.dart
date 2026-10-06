@@ -51,6 +51,9 @@ class AppState extends ChangeNotifier {
   UpdateInfo? pendingUpdate;
   Timer? _updateTimer;
 
+  /// 登录态恢复重试彻底失败（显示在「正在连接服务器…」页上）。
+  bool restoreFailed = false;
+
   /// 诊断用：最近一次收到消息的时间。
   DateTime? lastMessageAt;
 
@@ -88,9 +91,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 启动时服务器暂时不可达：保留登录态并静默重试，网络恢复后自动回到聊天。
+  /// 启动时服务器暂时不可达：保留登录态并静默重试（最多 10 分钟），
+  /// 网络恢复后自动回到聊天；彻底失败则显示在「正在连接」页上供手动重试。
   Future<void> _retryRestoreSession() async {
-    for (var i = 0; i < 40; i++) {
+    restoreFailed = false;
+    notifyListeners();
+    for (var i = 0; i < 75; i++) {
       await Future<void>.delayed(const Duration(seconds: 8));
       if (token == null || me != null) return;
       try {
@@ -105,7 +111,12 @@ class AppState extends ChangeNotifier {
         }
       } catch (_) {}
     }
+    restoreFailed = true;
+    notifyListeners();
   }
+
+  /// 供「正在连接服务器…」页面手动重试。
+  Future<void> retryRestoreSession() => _retryRestoreSession();
 
   // ---------------------------------------------------------------- auth
   Future<void> register({
@@ -202,6 +213,7 @@ class AppState extends ChangeNotifier {
     _updateTimer?.cancel();
     _updateTimer = null;
     pendingUpdate = null;
+    restoreFailed = false;
     token = null;
     api.token = null;
     me = null;

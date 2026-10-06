@@ -85,7 +85,9 @@ class Realtime {
     _connectingSince = DateTime.now();
     try {
       _closeChannel();
-      final wsBase = base
+      // 归一化：去掉尾部斜杠（防止 //ws 之类路径问题）
+      final cleanBase = base.trim().replaceAll(RegExp(r'/+$'), '');
+      final wsBase = cleanBase
           .replaceFirst(RegExp(r'^https://'), 'wss://')
           .replaceFirst(RegExp(r'^http://'), 'ws://');
       final uri = Uri.parse('$wsBase/ws?token=${Uri.encodeQueryComponent(token)}');
@@ -139,13 +141,12 @@ class Realtime {
     });
     if (!_shouldRun) return;
     _attempt++;
+    // 重连退避：2s → 5s → 之后封顶 10 秒（恢复更快）
     final secs = _attempt <= 1
         ? 2
         : _attempt <= 3
             ? 5
-            : _attempt <= 6
-                ? 15
-                : 30;
+            : 10;
     _retryTimer?.cancel();
     _retryTimer = Timer(Duration(seconds: secs), _open);
   }

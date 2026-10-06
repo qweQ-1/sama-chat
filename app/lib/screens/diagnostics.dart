@@ -83,6 +83,48 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
               label: const Text('刷新状态 / 重连'),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final s = context.read<AppState>();
+                final sw = Stopwatch()..start();
+                String httpText;
+                try {
+                  await s.api.serverTime();
+                  httpText = 'HTTP 连接正常（${sw.elapsedMilliseconds}ms）';
+                } on ApiException catch (e) {
+                  httpText = 'HTTP 连接失败：${e.message}';
+                } catch (e) {
+                  httpText = 'HTTP 连接失败：$e';
+                }
+                s.rt.ensureConnected();
+                await Future<void>.delayed(const Duration(seconds: 2));
+                if (!context.mounted) return;
+                final wsText =
+                    s.rt.connected ? 'WebSocket 已连接 ✓' : 'WebSocket 未连接 ✗';
+                await showDialog<void>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('网络自检结果'),
+                    content: Text(
+                      '服务器：${s.serverBase}\n\n$httpText\n$wsText',
+                      style: const TextStyle(height: 1.6),
+                    ),
+                    actions: [
+                      FilledButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('好的'),
+                      ),
+                    ],
+                  ),
+                );
+                if (mounted) setState(() {});
+              },
+              icon: const Icon(Icons.network_check, size: 18),
+              label: const Text('网络自检（HTTP + WebSocket）'),
+            ),
+          ),
           const Padding(
             padding: EdgeInsets.all(16),
             child: Text(

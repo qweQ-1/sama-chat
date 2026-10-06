@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../api.dart';
+import '../image_utils.dart';
 import '../models.dart';
 import '../store.dart';
 import '../widgets.dart';
@@ -102,9 +103,10 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       if (x == null) return;
       setState(() => _sendingMedia = true);
-      final bytes = await x.readAsBytes();
-      final ext = x.name.contains('.') ? x.name.split('.').last : 'jpg';
-      await s.sendImage(convId, bytes, ext);
+      final raw = await x.readAsBytes();
+      final ext0 = x.name.contains('.') ? x.name.split('.').last : 'jpg';
+      final img = await compressImage(raw, fallbackExt: ext0);
+      await s.sendImage(convId, img.bytes, img.ext);
     } on ApiException catch (e) {
       if (mounted) showError(context, e.message);
     } catch (e) {
@@ -443,11 +445,10 @@ class _Bubble extends StatelessWidget {
         : message.isImage
         ? ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              resolveUrl(context, message.content),
+            child: NetImage(
+              url: message.content,
               width: 180,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
+              errorBuilder: (_) => Container(
                 width: 180,
                 height: 120,
                 color: Colors.grey.shade300,

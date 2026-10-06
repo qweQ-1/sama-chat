@@ -1,7 +1,9 @@
 /// Small shared UI pieces.
 library;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:provider/provider.dart';
 
 import 'models.dart';
@@ -21,6 +23,65 @@ String resolveUrl(BuildContext context, String url) {
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   final base = context.read<AppState>().serverBase;
   return '$base$url';
+}
+
+/// 全 App 图片磁盘缓存（桌面端也用 JSON 索引，无需 sqlite 插件）。
+final CacheManager imageCacheManager = CacheManager(
+  Config(
+    'samaImages',
+    stalePeriod: const Duration(days: 30),
+    maxNrOfCacheObjects: 800,
+    repo: JsonCacheInfoRepository(databaseName: 'samaImages'),
+    fileSystem: IOFileSystem('samaImages'),
+  ),
+);
+
+/// 带磁盘缓存的网络图片：看过的图第二次打开直接本地秒出，不再走网络。
+class NetImage extends StatelessWidget {
+  final String url;
+  final BoxFit fit;
+  final double? width;
+  final double? height;
+  final Widget Function(BuildContext context)? errorBuilder;
+  final Widget? placeholder;
+
+  const NetImage({
+    super.key,
+    required this.url,
+    this.fit = BoxFit.cover,
+    this.width,
+    this.height,
+    this.errorBuilder,
+    this.placeholder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CachedNetworkImage(
+      imageUrl: resolveUrl(context, url),
+      cacheManager: imageCacheManager,
+      fit: fit,
+      width: width,
+      height: height,
+      fadeInDuration: const Duration(milliseconds: 120),
+      placeholder: (context, _) =>
+          placeholder ??
+          Container(
+            width: width,
+            height: height,
+            color: Colors.black.withValues(alpha: 0.05),
+          ),
+      errorWidget: (context, _, __) =>
+          errorBuilder?.call(context) ??
+          Container(
+            width: width,
+            height: height,
+            color: Colors.grey.shade200,
+            alignment: Alignment.center,
+            child: const Icon(Icons.broken_image_outlined, color: Colors.grey),
+          ),
+    );
+  }
 }
 
 class Avatar extends StatelessWidget {
@@ -55,12 +116,11 @@ class Avatar extends StatelessWidget {
     if (!hasImage) return fallback;
     return ClipRRect(
       borderRadius: BorderRadius.circular(size * 0.28),
-      child: Image.network(
-        resolveUrl(context, u),
+      child: NetImage(
+        url: u,
         width: size,
         height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => fallback,
+        errorBuilder: (_) => fallback,
       ),
     );
   }
@@ -97,7 +157,11 @@ class ImageViewerScreen extends StatelessWidget {
     final img = InteractiveViewer(
       maxScale: 6,
       child: Center(
-        child: Image.network(resolveUrl(context, url), fit: BoxFit.contain),
+        child: NetImage(
+          url: url,
+          fit: BoxFit.contain,
+          placeholder: const Center(child: CircularProgressIndicator()),
+        ),
       ),
     );
     return Scaffold(

@@ -125,6 +125,7 @@ export function registerApiRoutes(app, io) {
           .headers({
             'Content-Range': `bytes ${start}-${end}/${size}`,
             'Accept-Ranges': 'bytes',
+            'Cache-Control': 'public, max-age=86400',
             'Content-Length': String(end - start + 1),
           })
           .type(mime)
@@ -132,7 +133,11 @@ export function registerApiRoutes(app, io) {
       }
     }
     return reply
-      .headers({ 'Accept-Ranges': 'bytes', 'Content-Length': String(size) })
+      .headers({
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=86400',
+        'Content-Length': String(size),
+      })
       .type(mime)
       .send(fs.createReadStream(file));
   });

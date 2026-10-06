@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../api.dart';
+import '../image_utils.dart';
 import '../models.dart';
 import '../store.dart';
 import '../widgets.dart';
@@ -324,12 +325,12 @@ class _ImageGrid extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            resolveUrl(context, images[i]),
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
+          child: NetImage(
+            url: images[i],
+            errorBuilder: (_) => Container(
               color: Colors.grey.shade200,
-              child: const Icon(Icons.broken_image_outlined, color: Colors.grey),
+              child:
+                  const Icon(Icons.broken_image_outlined, color: Colors.grey),
             ),
           ),
         ),
@@ -366,9 +367,10 @@ class _ComposeMomentScreenState extends State<ComposeMomentScreen> {
     );
     for (final f in files) {
       if (_images.length >= 9) break;
-      final bytes = await f.readAsBytes();
-      final ext = f.name.contains('.') ? f.name.split('.').last : 'jpg';
-      setState(() => _images.add((bytes: bytes, ext: ext)));
+      final raw = await f.readAsBytes();
+      final ext0 = f.name.contains('.') ? f.name.split('.').last : 'jpg';
+      final img = await compressImage(raw, fallbackExt: ext0);
+      setState(() => _images.add((bytes: img.bytes, ext: img.ext)));
     }
   }
 

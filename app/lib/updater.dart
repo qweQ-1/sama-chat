@@ -12,7 +12,6 @@ import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const _repo = 'qweQ-1/sama-chat';
@@ -24,6 +23,7 @@ class UpdateInfo {
   final String pageUrl;
   final String? apkUrl;
   final String? ipaUrl;
+  final String? zipUrl; // Windows 桌面版压缩包
 
   UpdateInfo({
     required this.version,
@@ -31,6 +31,7 @@ class UpdateInfo {
     required this.pageUrl,
     this.apkUrl,
     this.ipaUrl,
+    this.zipUrl,
   });
 }
 
@@ -67,6 +68,7 @@ class Updater {
 
       String? apk;
       String? ipa;
+      String? zip;
       for (final a in (j['assets'] as List? ?? const <dynamic>[])) {
         if (a is! Map) continue;
         final name = a['name'] as String? ?? '';
@@ -74,6 +76,7 @@ class Updater {
         if (url == null) continue;
         if (name.endsWith('.apk')) apk = url;
         if (name.endsWith('.ipa')) ipa = url;
+        if (name.endsWith('.zip')) zip = url;
       }
       return UpdateInfo(
         version: tag,
@@ -82,23 +85,10 @@ class Updater {
             'https://github.com/$_repo/releases/latest',
         apkUrl: apk,
         ipaUrl: ipa,
+        zipUrl: zip,
       );
     } catch (_) {
       return null;
-    }
-  }
-
-  /// 自动检查节流：6 小时内只自动检查一次。
-  static Future<bool> shouldAutoCheck() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final last = prefs.getInt('lastUpdateCheck') ?? 0;
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
-      if (nowMs - last < 6 * 60 * 60 * 1000) return false;
-      await prefs.setInt('lastUpdateCheck', nowMs);
-      return true;
-    } catch (_) {
-      return true;
     }
   }
 
@@ -151,9 +141,18 @@ Future<void> showUpdateDialog(BuildContext context, UpdateInfo info) async {
   );
 }
 
-/// 执行更新：桌面 / iOS 跳浏览器 / Android 下载并拉起安装器。
+/// GitHub 加速前缀（Android / Windows 更新包下载用）。
+const _ghProxy = 'https://gh-proxy.com/';
+
+String _accelerated(String url) =>
+    url.startsWith('http') && !url.contains('gh-proxy.com') ? '$_ghProxy$url' : url;
+
+/// 执行更新：
+/// - Android：加速下载 APK → 拉起安装器
+/// - Windows 桌面：加速下载 windows.zip → 保存到「下载」文件夹并打开
+/// - iOS：跳浏览器打开下载页（自签安装）
 Future<void> startUpdate(BuildContext context, UpdateInfo info) async {
-  if (Platform.isIOS || Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+  if (Platform.isIOS) {
     try {
       final ok = await launchUrl(
         Uri.parse(info.pageUrl),
@@ -165,6 +164,11 @@ Future<void> startUpdate(BuildContext context, UpdateInfo info) async {
         _toast(context, '无法打开浏览器，请手动访问 GitHub Releases 下载更新');
       }
     }
+    return;
+  }
+
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    await _updateDesktop(context, info);
     return;
   }
 
@@ -198,7 +202,7 @@ Future<void> startUpdate(BuildContext context, UpdateInfo info) async {
               style: const TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 6),
-            const Text('使用 GitHub 原链接下载',
+            const Text('使用 GitHub 加速地址下载',
                 style: TextStyle(fontSize: 11, color: Colors.grey)),
           ],
         ),
@@ -220,7 +224,7 @@ Future<void> startUpdate(BuildContext context, UpdateInfo info) async {
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/SamaChat-${info.version}.apk');
     final client = http.Client();
-    final req = http.Request('GET', Uri.parse(apkUrl));
+    final req = http.Request('GET', Uri.parse(_accelerated(apkUrl)));
     final res = await client.send(req).timeout(const Duration(seconds: 30));
     if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
     final total = res.contentLength ?? 0;
@@ -265,4 +269,128 @@ void _toast(BuildContext context, String msg) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
   );
+}
+
+/// Windows / macOS / Linux：下载更新压缩包到「下载」文件夹。
+Future<void> _updateDesktop(BuildContext context, UpdateInfo info) async {
+  final zipUrl = info.zipUrl;
+  if (zipUrl == null) {
+    try {
+      await launchUrl(Uri.parse(info.pageUrl),
+          mode: LaunchMode.externalApplication);
+    } catch (_) {}
+    return;
+  }
+
+  final progress = ValueNotifier<double>(0);
+  var cancelled = false;
+  var dialogOpen = true;
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => AlertDialog(
+      title: const Text('正在下载更新包…'),
+      content: ValueListenableBuilder<double>(
+        valueListenable: progress,
+        builder: (context, v, _) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            LinearProgressIndicator(value: v > 0 ? v : null),
+            const SizedBox(height: 10),
+            Text(
+              v > 0 ? '${(v * 100).toStringAsFixed(0)}%' : '正在连接…',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            const Text('使用 GitHub 加速地址下载',
+                style: TextStyle(fontSize: 11, color: Colors.grey)),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            cancelled = true;
+            dialogOpen = false;
+            Navigator.pop(ctx);
+          },
+          child: const Text('取消'),
+        ),
+      ],
+    ),
+  );
+
+  try {
+    final dir = await getDownloadsDirectory() ?? await getTemporaryDirectory();
+    final file = File('${dir.path}/SamaChat-${info.version}-windows.zip');
+    final client = http.Client();
+    final req = http.Request('GET', Uri.parse(_accelerated(zipUrl)));
+    final res = await client.send(req).timeout(const Duration(seconds: 30));
+    if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
+    final total = res.contentLength ?? 0;
+    final sink = file.openWrite();
+    var received = 0;
+    await for (final chunk in res.stream) {
+      if (cancelled) {
+        await sink.close();
+        try {
+          await file.delete();
+        } catch (_) {}
+        client.close();
+        return;
+      }
+      sink.add(chunk);
+      received += chunk.length;
+      if (total > 0) progress.value = received / total;
+    }
+    await sink.close();
+    client.close();
+    if (dialogOpen && context.mounted) {
+      dialogOpen = false;
+      Navigator.pop(context);
+    }
+    if (context.mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('更新包下载完成 🎉'),
+          content: Text(
+              '已保存到「下载」文件夹：\nSamaChat-${info.version}-windows.zip\n\n关闭本应用后，把它解压并覆盖原文件夹，再打开就完成更新啦～'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('知道了')),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _openFolder(dir.path);
+              },
+              child: const Text('打开文件夹'),
+            ),
+          ],
+        ),
+      );
+    }
+  } catch (e) {
+    if (dialogOpen && context.mounted) {
+      dialogOpen = false;
+      Navigator.pop(context);
+    }
+    if (context.mounted) {
+      _toast(context, '下载失败：$e（可到 GitHub Releases 手动下载）');
+    }
+  }
+}
+
+/// 打开本地文件夹（Windows / macOS / Linux）。
+void _openFolder(String path) {
+  try {
+    if (Platform.isWindows) {
+      Process.run('explorer.exe', [path]);
+    } else if (Platform.isMacOS) {
+      Process.run('open', [path]);
+    } else {
+      Process.run('xdg-open', [path]);
+    }
+  } catch (_) {}
 }

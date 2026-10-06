@@ -13,6 +13,7 @@ import 'keepalive.dart';
 import 'models.dart';
 import 'notifications.dart';
 import 'realtime.dart';
+import 'updater.dart';
 
 class AppState extends ChangeNotifier {
   final Api api = Api(AppConfig.defaultServer);
@@ -43,6 +44,13 @@ class AppState extends ChangeNotifier {
   bool keepAliveEnabled = true;
   bool appInForeground = true;
 
+  /// 自动检查更新间隔（分钟；0=关闭后台检查；默认 2 小时）。
+  int updateIntervalMinutes = 120;
+
+  /// 后台/定时检查发现的新版本，等界面回到前台弹窗。
+  UpdateInfo? pendingUpdate;
+  Timer? _updateTimer;
+
   /// 诊断用：最近一次收到消息的时间。
   DateTime? lastMessageAt;
 
@@ -54,6 +62,7 @@ class AppState extends ChangeNotifier {
     api.base = serverBase;
     notificationsEnabled = _prefs!.getBool('notifications') ?? true;
     keepAliveEnabled = _prefs!.getBool('keepAlive') ?? true;
+    updateIntervalMinutes = _prefs!.getInt('updateIntervalMinutes') ?? 120;
     unawaited(_syncServerTime());
     token = _prefs!.getString('token');
     if (token != null && token!.isNotEmpty) {
@@ -153,6 +162,7 @@ class AppState extends ChangeNotifier {
     if (keepAliveEnabled) {
       unawaited(KeepAliveService.start());
     }
+    _startUpdateTimer();
     unawaited(refreshConversations());
     unawaited(refreshFriends());
     unawaited(refreshRequests());
@@ -163,6 +173,9 @@ class AppState extends ChangeNotifier {
   Future<void> logout() async {
     rt.disconnect();
     unawaited(KeepAliveService.stop());
+    _updateTimer?.cancel();
+    _updateTimer = null;
+    pendingUpdate = null;
     token = null;
     api.token = null;
     me = null;
@@ -202,12 +215,56 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ------------------------------------------------------- 自动检查更新
+  /// 设置自动检查更新的间隔（分钟；0 = 关闭后台自动检查）。
+  Future<void> setUpdateInterval(int minutes) async {
+    updateIntervalMinutes = minutes;
+    await _prefs?.setInt('updateIntervalMinutes', minutes);
+    _startUpdateTimer();
+    notifyListeners();
+  }
+
+  void _startUpdateTimer() {
+    _updateTimer?.cancel();
+    _updateTimer = null;
+    final min = updateIntervalMinutes;
+    if (min <= 0) return;
+    _updateTimer = Timer.periodic(
+      Duration(minutes: min),
+      (_) => unawaited(_timedUpdateCheck()),
+    );
+  }
+
+  /// 每次进入 App 时检查一次更新。
+  Future<void> checkUpdateOnLaunch() async {
+    _handleFoundUpdate(await Updater.check());
+  }
+
+  Future<void> _timedUpdateCheck() async {
+    _handleFoundUpdate(await Updater.check());
+  }
+
+  /// 发现新版本：前台等界面弹窗；后台先弹系统通知。
+  void _handleFoundUpdate(UpdateInfo? info) {
+    if (info == null || pendingUpdate != null) return;
+    pendingUpdate = info;
+    if (!appInForeground) {
+      unawaited(AppNotifications.showMessage(
+        title: '发现新版本 v${info.version}',
+        body: '点开「萨摩聊天」更新吧',
+        id: 900002,
+      ));
+    }
+    notifyListeners();
+  }
+
   /// App 回到前台。
   void handleResume() {
     appInForeground = true;
     rt.ensureConnected();
     unawaited(_syncServerTime());
     if (keepAliveEnabled) unawaited(KeepAliveService.start());
+    notifyListeners();
   }
 
   /// App 退到后台。

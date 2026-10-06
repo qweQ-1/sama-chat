@@ -32,7 +32,19 @@ class _DesktopShellState extends State<DesktopShell>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     context.read<AppState>().handleResume();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoCheckUpdate());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<AppState>().checkUpdateOnLaunch();
+    });
+  }
+
+  /// 后台/定时检查发现的新版本，回到前台后弹窗。
+  void _maybeShowPendingUpdate(AppState s) {
+    final info = s.pendingUpdate;
+    if (info == null || !s.appInForeground) return;
+    s.pendingUpdate = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showUpdateDialog(context, info);
+    });
   }
 
   @override
@@ -46,6 +58,7 @@ class _DesktopShellState extends State<DesktopShell>
     final s = context.read<AppState>();
     if (state == AppLifecycleState.resumed) {
       s.handleResume();
+      _maybeShowPendingUpdate(s);
     } else {
       s.handleBackground();
     }
@@ -63,6 +76,8 @@ class _DesktopShellState extends State<DesktopShell>
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    _maybeShowPendingUpdate(s);
     return Scaffold(
       body: Row(
         children: [

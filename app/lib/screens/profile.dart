@@ -10,6 +10,8 @@ import '../store.dart';
 import '../widgets.dart';
 import 'diagnostics.dart';
 import 'blocklist.dart';
+import 'accounts.dart';
+import 'announce.dart';
 import '../updater.dart';
 
 class ProfileTab extends StatelessWidget {
@@ -318,14 +320,48 @@ class ProfileTab extends StatelessWidget {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.switch_account_outlined),
+            title: const Text('切换账号'),
+            subtitle: Text(
+              s.me == null
+                  ? ''
+                  : (s.me!.email.isNotEmpty
+                      ? s.me!.email
+                      : (s.me!.phone.isNotEmpty
+                          ? s.me!.phone
+                          : '@${s.me!.username}')),
+              style: const TextStyle(fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AccountsScreen()),
+            ),
+          ),
+          if (s.canAnnounce)
+            ListTile(
+              leading: const Icon(Icons.campaign_outlined),
+              title: const Text('发布公告'),
+              subtitle: const Text('向所有用户推送公告（每人只弹一次）',
+                  style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const PublishAnnouncementScreen()),
+              ),
+            ),
+          ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('${AppConfig.appName} v2.0.2',
+            subtitle: const Text('${AppConfig.appName} v2.0.3',
                 style: TextStyle(fontSize: 12)),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: AppConfig.appName,
-              applicationVersion: '2.0.2',
+              applicationVersion: '2.0.3',
               children: const [
                 Text('一个轻量的实时聊天应用：私聊、群聊、炫圈、面对面扫码加好友。'),
               ],

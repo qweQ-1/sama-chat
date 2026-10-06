@@ -449,6 +449,37 @@ for (let i = 0; i < 5; i++) {
 const ex3 = await api('POST', '/auth/register', { body: { phone: '13988888888', password: 'secret123', code: ay.code } });
 ok('错误 5 次后验证码作废', ex3.status === 400, JSON.stringify(ex3.json));
 
+console.log('\n== 17. 公告系统 ==');
+const annNoPerm = await api('POST', '/announce', { token: A, body: { content: '测试' } });
+ok('普通用户发公告被拒(403)', annNoPerm.status === 403);
+ok('普通用户 canAnnounce=false', me.json?.user?.canAnnounce === false);
+const cH = await sendCode('13800000005');
+const rH = await api('POST', '/auth/register', {
+  body: { username: 'huzhi', password: 'secret123', displayName: 'huzhi', phone: '13800000005', code: cH.code },
+});
+ok('huzhi 管理员账号注册成功', rH.status === 200 && !!rH.json?.token);
+ok('huzhi canAnnounce=true', rH.json?.user?.canAnnounce === true);
+const H = rH.json.token;
+const rHMe = await api('GET', '/auth/me', { token: H });
+ok('GET /auth/me 含 canAnnounce', rHMe.json?.user?.canAnnounce === true);
+const annWatcher = await connectWs(B);
+const pub = await api('POST', '/announce', { token: H, body: { content: '你好，这是一条测试公告' } });
+ok('管理员发布公告成功', pub.status === 200 && pub.json?.ok === true && pub.json?.announcement?.content === '你好，这是一条测试公告');
+const annPush = await waitFor(annWatcher.events, 'announce:new', (d) => d?.announcement?.content === '你好，这是一条测试公告');
+ok('在线用户实时收到公告推送', !!annPush);
+const annList = await api('GET', '/announce', { token: B });
+ok('登录后可拉取未读公告', Array.isArray(annList.json?.announcements) && annList.json.announcements.some((x) => x.content === '你好，这是一条测试公告'));
+const annIds = (annList.json?.announcements ?? []).map((x) => x.id);
+const annAck = await api('POST', '/announce/ack', { token: B, body: { ids: annIds } });
+ok('标记公告已读', annAck.status === 200 && annAck.json?.ok === true);
+const annList2 = await api('GET', '/announce', { token: B });
+ok('已读后不再下发（只弹一次）', !(annList2.json?.announcements ?? []).some((x) => annIds.includes(x.id)));
+const annNoAuth = await api('GET', '/announce');
+ok('未登录拉公告被拒(401)', annNoAuth.status === 401);
+const annEmpty = await api('POST', '/announce', { token: H, body: { content: '   ' } });
+ok('空公告被拒(400)', annEmpty.status === 400);
+annWatcher.ws.close();
+
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 
 console.log(`\n===== RESULT: ${pass} passed, ${fail} failed =====`);

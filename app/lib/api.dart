@@ -128,6 +128,25 @@ class Api {
     return j['authMode'] as String? ?? 'email';
   }
 
+  // ---------------- 公告 ----------------
+  /// 拉取未读公告（登录后调用；弹过后要调 ackAnnouncements 标记已读）。
+  Future<List<Announcement>> unreadAnnouncements() async {
+    final j = await _req('GET', '/announce');
+    return ((j['announcements'] as List?) ?? const [])
+        .map((e) => Announcement.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  /// 发布公告（仅 huzhi 等管理员账号，服务端强校验权限）。
+  Future<void> publishAnnouncement(String content) async {
+    await _req('POST', '/announce', body: {'content': content});
+  }
+
+  /// 标记公告已读（保证同一条公告「只弹一次」）。
+  Future<void> ackAnnouncements(List<String> ids) async {
+    await _req('POST', '/announce/ack', body: {'ids': ids});
+  }
+
   Future<(String, User)> login(String username, String password) async {
     final j = await _req('POST', '/auth/login',
         body: {'username': username, 'password': password}, auth: false);

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../store.dart';
 import '../updater.dart';
+import '../widgets.dart';
 import 'chats.dart';
 import 'contacts.dart';
 import 'moments.dart';
@@ -64,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final s = context.watch<AppState>();
     final totalUnread = s.conversations.fold<int>(0, (a, c) => a + c.unread);
     final requestCount = s.incomingRequests.length;
+    maybeShowAnnouncements(context);
 
     return Scaffold(
       body: IndexedStack(index: _index, children: _pages),

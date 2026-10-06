@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,55 @@ import 'keepalive.dart';
 import 'models.dart';
 import 'notifications.dart';
 import 'realtime.dart';
+
+/// 已保存的账号（「切换账号」用；无需重新输密码）。
+class SavedAccount {
+  final String id; // 用户 id
+  final String token;
+  final String displayName;
+  final String username;
+  final String? avatar;
+  final String email;
+  final String phone;
+  final String serverBase;
+
+  SavedAccount({
+    required this.id,
+    required this.token,
+    required this.displayName,
+    required this.username,
+    this.avatar,
+    this.email = '',
+    this.phone = '',
+    required this.serverBase,
+  });
+
+  factory SavedAccount.fromJson(Map<String, dynamic> j) => SavedAccount(
+        id: j['id'] as String? ?? '',
+        token: j['token'] as String? ?? '',
+        displayName: j['displayName'] as String? ?? '',
+        username: j['username'] as String? ?? '',
+        avatar: j['avatar'] as String?,
+        email: j['email'] as String? ?? '',
+        phone: j['phone'] as String? ?? '',
+        serverBase: j['serverBase'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'token': token,
+        'displayName': displayName,
+        'username': username,
+        'avatar': avatar,
+        'email': email,
+        'phone': phone,
+        'serverBase': serverBase,
+      };
+
+  /// 账号标识（邮箱 > 手机号 > @用户名），用于列表展示。
+  String get ident =>
+      email.isNotEmpty ? email : (phone.isNotEmpty ? phone : '@$username');
+}
 
 class AppState extends ChangeNotifier {
   final Api api = Api(AppConfig.defaultServer);
@@ -30,6 +80,17 @@ class AppState extends ChangeNotifier {
   List<User> friends = [];
   List<FriendRequest> incomingRequests = [];
   List<Moment> moments = [];
+
+  /// 已保存的账号（「切换账号」用）。
+  List<SavedAccount> savedAccounts = [];
+
+  /// 未读公告（弹过一次后清空并上报已读）。
+  List<Announcement> pendingAnnouncements = [];
+  bool announcementShown = false; // 弹窗防重入
+  final Set<String> _ackedAnnIds = {};
+
+  /// 是否有发布公告权限（huzhi 账号，服务端下发）。
+  bool canAnnounce = false;
 
   final Set<String> onlineUserIds = {};
   final Map<String, Set<String>> typingIn = {};
@@ -54,13 +115,16 @@ class AppState extends ChangeNotifier {
     api.base = serverBase;
     notificationsEnabled = _prefs!.getBool('notifications') ?? true;
     keepAliveEnabled = _prefs!.getBool('keepAlive') ?? true;
+    _loadSavedAccounts();
     unawaited(_syncServerTime());
     token = _prefs!.getString('token');
     if (token != null && token!.isNotEmpty) {
       api.token = token;
       try {
         me = await api.me();
+        canAnnounce = me?.canAnnounce ?? false;
         _afterLogin();
+        unawaited(_rememberAccount());
       } catch (_) {
         // token invalid or server unreachable — keep it; user can re-login
         token = null;
@@ -128,7 +192,9 @@ class AppState extends ChangeNotifier {
     token = t;
     api.token = t;
     me = user;
+    canAnnounce = user.canAnnounce;
     await _prefs?.setString('token', t);
+    await _rememberAccount();
     unawaited(_syncServerTime());
     _afterLogin();
     notifyListeners();
@@ -157,6 +223,7 @@ class AppState extends ChangeNotifier {
     unawaited(refreshFriends());
     unawaited(refreshRequests());
     unawaited(refreshMoments());
+    unawaited(checkAnnouncements());
     notifyListeners();
   }
 
@@ -166,6 +233,14 @@ class AppState extends ChangeNotifier {
     token = null;
     api.token = null;
     me = null;
+    canAnnounce = false;
+    _resetData();
+    await _prefs?.remove('token');
+    notifyListeners();
+  }
+
+  /// 清空当前账号的运行数据（切号 / 退出时用；已保存的账号列表不受影响）。
+  void _resetData() {
     conversations = [];
     chatMessages.clear();
     friends = [];
@@ -174,8 +249,133 @@ class AppState extends ChangeNotifier {
     onlineUserIds.clear();
     typingIn.clear();
     rtConnected = false;
-    await _prefs?.remove('token');
+    activeChatId = null;
+    pendingAnnouncements = [];
+    _ackedAnnIds.clear();
+    announcementShown = false;
+  }
+
+  // ---------------------------------------------------------- 多账号切换
+  void _loadSavedAccounts() {
+    try {
+      final raw = _prefs?.getString('savedAccounts');
+      if (raw == null || raw.isEmpty) return;
+      final list = (jsonDecode(raw) as List)
+          .whereType<Map>()
+          .map((e) => SavedAccount.fromJson(e.cast<String, dynamic>()))
+          .where((a) => a.id.isNotEmpty && a.token.isNotEmpty)
+          .toList();
+      savedAccounts = list;
+    } catch (_) {}
+  }
+
+  Future<void> _saveSavedAccounts() async {
+    try {
+      await _prefs?.setString('savedAccounts',
+          jsonEncode(savedAccounts.map((a) => a.toJson()).toList()));
+    } catch (_) {}
+  }
+
+  /// 把当前登录的账号记入「已保存账号」列表（最近的排最前）。
+  Future<void> _rememberAccount() async {
+    final u = me;
+    final t = token;
+    if (u == null || t == null) return;
+    final acc = SavedAccount(
+      id: u.id,
+      token: t,
+      displayName: u.displayName,
+      username: u.username,
+      avatar: u.avatar,
+      email: u.email,
+      phone: u.phone,
+      serverBase: serverBase,
+    );
+    savedAccounts.removeWhere((a) => a.id == acc.id);
+    savedAccounts.insert(0, acc);
+    await _saveSavedAccounts();
     notifyListeners();
+  }
+
+  /// 切换到另一个已保存的账号。先验证该账号 token 有效，成功才原子切换；
+  /// 失败不会破坏当前会话（直接抛错给界面提示）。
+  Future<void> switchAccount(String id) async {
+    if (me?.id == id) return;
+    final acc = savedAccounts.firstWhere(
+      (a) => a.id == id,
+      orElse: () => throw ApiException(404, '账号不存在'),
+    );
+    // 1) 用独立的 Api 实例验证（不动当前状态）
+    final base = acc.serverBase.isNotEmpty ? acc.serverBase : serverBase;
+    final probe = Api(base)..token = acc.token;
+    final User user = await probe.me();
+
+    // 2) 原子切换
+    rt.disconnect();
+    _resetData();
+    serverBase = base;
+    api.base = base;
+    token = acc.token;
+    api.token = acc.token;
+    me = user;
+    canAnnounce = user.canAnnounce;
+    await _prefs?.setString('serverBase', base);
+    await _prefs?.setString('token', acc.token);
+    await _rememberAccount();
+    unawaited(_syncServerTime());
+    _afterLogin();
+    notifyListeners();
+  }
+
+  /// 从「已保存账号」中删除一个账号；删的是当前账号时自动切走或退出登录。
+  Future<void> removeAccount(String id) async {
+    savedAccounts.removeWhere((a) => a.id == id);
+    await _saveSavedAccounts();
+    notifyListeners();
+    if (me?.id != id) return;
+    if (savedAccounts.isEmpty) {
+      await logout();
+      return;
+    }
+    try {
+      await switchAccount(savedAccounts.first.id);
+    } catch (_) {
+      await logout();
+    }
+  }
+
+  // ------------------------------------------------------------- 公告
+  /// 拉取未读公告（登录 / 启动时调用；弹过后由 ackAnnouncements 标记已读）。
+  Future<void> checkAnnouncements() async {
+    try {
+      final list = await api.unreadAnnouncements();
+      if (list.isEmpty) return;
+      var changed = false;
+      for (final a in list) {
+        if (_ackedAnnIds.contains(a.id)) continue;
+        if (pendingAnnouncements.any((x) => x.id == a.id)) continue;
+        pendingAnnouncements.add(a);
+        changed = true;
+      }
+      if (changed) notifyListeners();
+    } catch (_) {}
+  }
+
+  /// 标记全部待弹公告为已读（保证「只弹一次」）。
+  Future<void> ackAnnouncements() async {
+    final ids = pendingAnnouncements.map((a) => a.id).toList();
+    if (ids.isEmpty) return;
+    _ackedAnnIds.addAll(ids);
+    pendingAnnouncements = [];
+    notifyListeners();
+    try {
+      await api.ackAnnouncements(ids);
+    } catch (_) {}
+  }
+
+  /// 发布公告（服务端强校验权限，失败抛 ApiException）。
+  Future<void> publishAnnouncement(String content) async {
+    await api.publishAnnouncement(content);
   }
 
   Future<void> updateProfile({String? displayName, String? avatar}) async {
@@ -351,6 +551,16 @@ class AppState extends ChangeNotifier {
       case 'conversation:new':
       case 'conversation:update':
         unawaited(refreshConversations());
+      case 'announce:new':
+        if (data is Map && data['announcement'] is Map) {
+          final a = Announcement.fromJson(
+              (data['announcement'] as Map).cast<String, dynamic>());
+          if (!_ackedAnnIds.contains(a.id) &&
+              !pendingAnnouncements.any((x) => x.id == a.id)) {
+            pendingAnnouncements.add(a);
+            notifyListeners();
+          }
+        }
       case 'moment:new':
         unawaited(refreshMoments());
       case 'moment:deleted':

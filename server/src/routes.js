@@ -21,6 +21,7 @@ import {
 } from './store.js';
 import fs from 'node:fs';
 import path from 'node:path';
+import { canAnnounce } from './auth.js';
 
 // Where uploaded images live. Served back at /uploads/<file>.
 export const UPLOAD_DIR =
@@ -731,6 +732,71 @@ export function registerApiRoutes(app, io) {
       io?.toUser(f, 'moment:deleted', { momentId: moment.id });
     }
     io?.toUser(req.userId, 'moment:deleted', { momentId: moment.id });
+    return { ok: true };
+  });
+
+  // ---------- 公告 ----------
+  // 只有管理员账号（默认 huzhi，用户名或昵称均可）能发布；
+  // 每个人在打开 App + 登录后收到一次，弹窗看过即标记已读，之后不再重复弹出。
+  const annDto = (a) => ({
+    id: a.id,
+    content: a.content,
+    authorName: a.authorName,
+    createdAt: a.createdAt,
+  });
+
+  // 拉取我的未读公告。
+  app.get('/announce', { preHandler: app.auth }, async (req) => {
+    const u = findUserById(req.userId);
+    const seen = new Set(u?.seenAnns ?? []);
+    const announcements = db.data.announcements
+      .filter((a) => !seen.has(a.id))
+      .slice(-50)
+      .map(annDto);
+    return { announcements };
+  });
+
+  // 发布公告（仅管理员；发布后对所有在线用户实时推送）。
+  app.post('/announce', { preHandler: app.auth }, async (req, reply) => {
+    const u = findUserById(req.userId);
+    if (!canAnnounce(u)) {
+      return reply
+        .code(403)
+        .send({ error: 'no_permission', message: '没有发布公告的权限（仅 huzhi 账号可以发布）' });
+    }
+    const content = String(req.body?.content ?? '').trim().slice(0, 2000);
+    if (!content) {
+      return reply.code(400).send({ error: 'empty', message: '公告内容不能为空' });
+    }
+    const ann = {
+      id: newId('ann'),
+      content,
+      authorId: u.id,
+      authorName: u.displayName || u.username,
+      createdAt: now(),
+    };
+    db.data.announcements.push(ann);
+    if (db.data.announcements.length > 200) {
+      db.data.announcements.splice(0, db.data.announcements.length - 200);
+    }
+    await save();
+    io?.toAll?.('announce:new', { announcement: annDto(ann) });
+    return { ok: true, announcement: annDto(ann) };
+  });
+
+  // 标记公告已读（客户端弹过一次后调用；保证「只弹一次」）。
+  app.post('/announce/ack', { preHandler: app.auth }, async (req, reply) => {
+    const u = findUserById(req.userId);
+    if (!u) return reply.code(401).send({ error: 'unauthorized' });
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids.slice(0, 100).map(String)
+      : [];
+    if (ids.length === 0) return { ok: true };
+    const valid = new Set(db.data.announcements.map((a) => a.id));
+    const seen = new Set(u.seenAnns ?? []);
+    for (const id of ids) if (valid.has(id)) seen.add(id);
+    u.seenAnns = [...seen].slice(-300);
+    await save();
     return { ok: true };
   });
 }

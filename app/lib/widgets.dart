@@ -183,6 +183,61 @@ void showError(BuildContext context, String message) {
   ));
 }
 
+/// 显示未读公告（同一条只弹一次；关闭后立即标记已读）。
+/// 在主页 shell 的 build 里调用即可（内部有防重入与空判断）。
+void maybeShowAnnouncements(BuildContext context) {
+  final s = context.read<AppState>();
+  if (s.pendingAnnouncements.isEmpty || s.announcementShown) return;
+  s.announcementShown = true;
+  final anns = List<Announcement>.of(s.pendingAnnouncements);
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    if (!context.mounted) {
+      s.announcementShown = false;
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(children: [
+          Icon(Icons.campaign_outlined, size: 22),
+          SizedBox(width: 8),
+          Text('公告'),
+        ]),
+        content: SizedBox(
+          width: 340,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < anns.length; i++) ...[
+                  if (i > 0) const Divider(height: 24),
+                  Text(anns[i].content,
+                      style: const TextStyle(fontSize: 14.5, height: 1.55)),
+                  const SizedBox(height: 6),
+                  Text(
+                    '—— ${anns[i].authorName} · ${formatTime(anns[i].createdAt)}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('我知道了'),
+          ),
+        ],
+      ),
+    );
+    s.announcementShown = false;
+    await s.ackAnnouncements();
+  });
+}
+
 String previewOf(Message? m, String? myId) {
   if (m == null) return '';
   final who = (myId != null && m.senderId == myId) ? '我: ' : '';

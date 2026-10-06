@@ -9,6 +9,7 @@ class User {
   final String remark; // 好友备注（仅好友列表返回）
   final String phone; // 绑定的手机号（仅自己的账号信息里返回）
   final String email; // 绑定的邮箱（仅自己的账号信息里返回）
+  final bool canAnnounce; // 是否有发布公告权限（仅自己的账号信息里返回）
 
   User({
     required this.id,
@@ -18,6 +19,7 @@ class User {
     this.remark = '',
     this.phone = '',
     this.email = '',
+    this.canAnnounce = false,
   });
 
   /// 显示名：有备注优先用备注
@@ -31,6 +33,7 @@ class User {
         remark: j['remark'] as String? ?? '',
         phone: j['phone'] as String? ?? '',
         email: j['email'] as String? ?? '',
+        canAnnounce: j['canAnnounce'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -40,6 +43,7 @@ class User {
         'avatar': avatar,
         'phone': phone,
         'email': email,
+        'canAnnounce': canAnnounce,
       };
 }
 
@@ -225,6 +229,28 @@ class FriendRequest {
         to: j['to'] != null
             ? User.fromJson((j['to'] as Map).cast<String, dynamic>())
             : null,
+      );
+}
+
+/// 系统公告（管理员发布；每人只弹一次）。
+class Announcement {
+  final String id;
+  final String content;
+  final String authorName;
+  final int createdAt;
+
+  Announcement({
+    required this.id,
+    required this.content,
+    required this.authorName,
+    required this.createdAt,
+  });
+
+  factory Announcement.fromJson(Map<String, dynamic> j) => Announcement(
+        id: j['id'] as String,
+        content: j['content'] as String? ?? '',
+        authorName: j['authorName'] as String? ?? '系统',
+        createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
       );
 }
 

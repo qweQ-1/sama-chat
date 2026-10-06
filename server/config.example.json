@@ -2,6 +2,8 @@
   "_说明": "萨摩聊天服务器配置：把本文件另存为 config.json（放在 server/ 目录），改完约 5 秒生效、无需重启。只有你需要改的项才需要保留，其余可删。",
   "_注册模式": "authMode：email = 邮箱验证码注册/登录（默认）；phone = 手机号验证码注册/登录。两种模式下「账号密码」登录始终可用。",
   "authMode": "email",
+  "_公告权限": "announceAdmins：可以发布公告的账号（用户名或昵称，默认 huzhi）。可写数组 [\"huzhi\"] 或逗号分隔字符串。",
+  "announceAdmins": ["huzhi"],
   "_邮箱发送_推荐": "用你自己的 QQ 邮箱发验证码（免费）。步骤：打开 mail.qq.com → 设置 → 账号 → 开启「POP3/SMTP服务」→ 生成授权码（一串字母）→ 填到下面的 pass。163 邮箱把 host 改成 smtp.163.com 同理（授权码在 163 邮箱设置里生成）。",
   "email": {
     "host": "smtp.qq.com",

@@ -75,6 +75,7 @@ function serverConfig() {
     smsFile: { ...legacy, ...(main.sms ?? {}) },
     emailFile: main.email ?? {},
     consoleFile: main.consoleMode ?? legacy.consoleMode === true,
+    announceAdmins: main.announceAdmins ?? legacy.announceAdmins ?? '',
   };
   _cfgCache = { t, v };
   return v;
@@ -86,6 +87,30 @@ export function authMode() {
     .trim()
     .toLowerCase();
   return m === 'phone' ? 'phone' : 'email';
+}
+
+// ---------- 公告发布权限（只有 huzhi 等管理员账号可发公告） ----------
+// 配置：server/config.json 的 announceAdmins（数组或逗号分隔字符串），默认 huzhi。
+// 匹配规则：用户名或昵称（大小写不敏感）。
+export function canAnnounce(user) {
+  if (!user) return false;
+  const raw =
+    process.env.ANNOUNCE_ADMINS || serverConfig().announceAdmins || 'huzhi';
+  const admins = (Array.isArray(raw) ? raw : String(raw).split(','))
+    .map((s) => String(s).trim().toLowerCase())
+    .filter(Boolean);
+  if (admins.length === 0) admins.push('huzhi');
+  const names = [user.username, user.displayName]
+    .filter(Boolean)
+    .map((s) => String(s).toLowerCase());
+  return names.some((n) => admins.includes(n));
+}
+
+/** 自己的账号信息 + 公告权限标志（客户端据此显示「发布公告」入口）。 */
+function selfMe(u) {
+  const su = selfUser(u);
+  if (su) su.canAnnounce = canAnnounce(u);
+  return su;
 }
 
 function smsConfig() {
@@ -452,7 +477,7 @@ export function registerAuthRoutes(app) {
     db.data.users.push(user);
     await save();
 
-    return { token: signToken(user.id), user: selfUser(user) };
+    return { token: signToken(user.id), user: selfMe(user) };
   });
 
   // ---------- 某手机号 / 邮箱名下的所有账号（登录第一步） ----------
@@ -488,11 +513,11 @@ export function registerAuthRoutes(app) {
         message: '用户名或密码错误',
       });
     }
-    return { token: signToken(user.id), user: selfUser(user) };
+    return { token: signToken(user.id), user: selfMe(user) };
   });
 
   app.get('/auth/me', { preHandler: app.auth }, async (req) => ({
-    user: selfUser(findUserById(req.userId)),
+    user: selfMe(findUserById(req.userId)),
   }));
 
   app.patch('/auth/me', { preHandler: app.auth }, async (req, reply) => {
@@ -541,6 +566,6 @@ export function registerAuthRoutes(app) {
       user.email = email;
     }
     await save();
-    return { user: selfUser(user) };
+    return { user: selfMe(user) };
   });
 }

@@ -63,6 +63,7 @@ class _DesktopShellState extends State<DesktopShell>
 
   @override
   Widget build(BuildContext context) {
+    maybeShowAnnouncements(context);
     return Scaffold(
       body: Row(
         children: [

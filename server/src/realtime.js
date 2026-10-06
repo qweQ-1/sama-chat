@@ -48,6 +48,11 @@ export function createIo(app) {
     }
   }
 
+  /** 给所有在线用户推送（公告用）。 */
+  function toAll(event, data) {
+    for (const userId of sockets.keys()) toUser(userId, event, data);
+  }
+
   function isOnline(userId) {
     return sockets.has(userId);
   }
@@ -154,5 +159,5 @@ export function createIo(app) {
     }
   }
 
-  return { toUser, toConversation, isOnline, count: () => sockets.size };
+  return { toUser, toConversation, toAll, isOnline, count: () => sockets.size };
 }

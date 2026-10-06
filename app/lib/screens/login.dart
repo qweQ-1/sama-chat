@@ -10,7 +10,9 @@ import '../store.dart';
 import '../widgets.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  /// 以「添加账号」方式打开：登录/注册成功后自动返回上一页（不重进主页）。
+  final bool addMode;
+  const LoginScreen({super.key, this.addMode = false});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -194,6 +196,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await _applyServer(s);
       await s.login(sel.username, _password.text);
+      _afterAuthSuccess();
     } on ApiException catch (e) {
       if (mounted) showError(context, e.message);
     } catch (e) {
@@ -230,6 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _isEmailMode ? _emailText : null,
         code: code,
       );
+      _afterAuthSuccess();
     } on ApiException catch (e) {
       if (mounted) showError(context, e.message);
     } catch (e) {
@@ -282,6 +286,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         await s.login(u, p);
       }
+      _afterAuthSuccess();
     } on ApiException catch (e) {
       if (mounted) showError(context, e.message);
     } catch (e) {
@@ -291,11 +296,18 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // ---------------- 添加账号模式：成功后返回 ----------------
+  void _afterAuthSuccess() {
+    if (!widget.addMode || !mounted) return;
+    Navigator.of(context).pop();
+  }
+
   // ---------------- 构建 ----------------
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
+      appBar: widget.addMode ? AppBar(title: const Text('添加账号')) : null,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(

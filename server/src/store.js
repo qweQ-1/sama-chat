@@ -16,6 +16,7 @@ const defaultData = {
   messages: [],     // {id, conversationId, senderId, type, content, createdAt, readBy[]}
   moments: [],      // {id, authorId, text, images[], createdAt, likes[], comments[]}
   blocks: [],       // {id, userId, blockedId, createdAt}  用户 userId 拉黑了 blockedId
+  announcements: [], // {id, content, authorId, authorName, createdAt}  系统公告
 };
 
 export const db = await JSONFilePreset(path.join(DATA_DIR, 'db.json'), defaultData);
@@ -28,9 +29,11 @@ for (const c of db.data.conversations) {
   c.lastTransferAt ??= 0;
 }
 db.data.blocks ??= [];
+db.data.announcements ??= [];
 for (const u of db.data.users) {
   u.phone ??= '';
   u.email ??= '';
+  u.seenAnns ??= []; // 已读公告 id（每人每条只弹一次）
 }
 
 export const newId = (prefix = '') => (prefix ? `${prefix}_` : '') + nanoid(12);

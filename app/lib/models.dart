@@ -233,6 +233,54 @@ class FriendRequest {
       );
 }
 
+/// 表情商店里的一个表情包（可发布、可下载）。
+class StickerPack {
+  final String id;
+  final String name;
+  final String authorId;
+  final String authorName;
+  final List<String> stickers; // 服务器图片 URL（/uploads/...）
+  final int downloads;
+  final bool downloaded;
+  final int createdAt;
+
+  StickerPack({
+    required this.id,
+    required this.name,
+    this.authorId = '',
+    this.authorName = '',
+    required this.stickers,
+    this.downloads = 0,
+    this.downloaded = false,
+    this.createdAt = 0,
+  });
+
+  factory StickerPack.fromJson(Map<String, dynamic> j) => StickerPack(
+        id: j['id'] as String,
+        name: j['name'] as String? ?? '',
+        authorId: j['authorId'] as String? ?? '',
+        authorName: j['authorName'] as String? ?? '',
+        stickers: (j['stickers'] as List?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            const [],
+        downloads: (j['downloads'] as num?)?.toInt() ?? 0,
+        downloaded: j['downloaded'] as bool? ?? false,
+        createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'authorId': authorId,
+        'authorName': authorName,
+        'stickers': stickers,
+        'downloads': downloads,
+        'downloaded': downloaded,
+        'createdAt': createdAt,
+      };
+}
+
 /// 系统公告（管理员发布；每人只弹一次）。
 class Announcement {
   final String id;

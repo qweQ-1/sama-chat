@@ -738,6 +738,11 @@ class AppState extends ChangeNotifier {
   /// 发送自定义表情（小图；以 sticker 类型发出，对方以小号展示）。
   Future<Message> sendSticker(String conversationId, Uint8List bytes, String ext) async {
     final url = await api.uploadImage(bytes, _normExt(ext));
+    return sendStickerUrl(conversationId, url);
+  }
+
+  /// 发送已在服务器上的表情（表情商店里下载的表情包图片，无需重复上传）。
+  Future<Message> sendStickerUrl(String conversationId, String url) async {
     final msg = await api.sendMessage(conversationId, content: url, type: 'sticker');
     _appendMessage(msg);
     return msg;

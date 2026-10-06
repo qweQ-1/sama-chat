@@ -12,6 +12,7 @@ import 'diagnostics.dart';
 import 'blocklist.dart';
 import 'accounts.dart';
 import 'announce.dart';
+import 'sticker_store.dart';
 import '../updater.dart';
 
 class ProfileTab extends StatelessWidget {
@@ -320,6 +321,17 @@ class ProfileTab extends StatelessWidget {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.storefront_outlined),
+            title: const Text('表情商店'),
+            subtitle: const Text('下载大家的图片/GIF 表情包，也可以发布自己的',
+                style: TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const StickerStoreScreen()),
+            ),
+          ),
+          ListTile(
             leading: const Icon(Icons.switch_account_outlined),
             title: const Text('切换账号'),
             subtitle: Text(
@@ -356,12 +368,12 @@ class ProfileTab extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('${AppConfig.appName} v2.0.4',
+            subtitle: const Text('${AppConfig.appName} v2.0.5',
                 style: TextStyle(fontSize: 12)),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: AppConfig.appName,
-              applicationVersion: '2.0.4',
+              applicationVersion: '2.0.5',
               children: const [
                 Text('一个轻量的实时聊天应用：私聊、群聊、炫圈、面对面扫码加好友。'),
               ],

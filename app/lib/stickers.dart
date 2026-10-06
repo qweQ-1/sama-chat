@@ -8,6 +8,10 @@ import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'dart:convert';
+
+import 'models.dart';
+
 class StickerStore {
   static const _kKey = 'myStickers';
   static const _folder = 'sama_stickers';
@@ -61,4 +65,40 @@ class StickerStore {
 
   static Future<Uint8List> bytesOf(String name) async =>
       (await fileOf(name)).readAsBytes();
+
+  // ---------------- 下载的表情包（表情商店） ----------------
+  static const _kPacks = 'stickerPacks';
+
+  /// 本地缓存的我下载过的表情包。
+  static Future<List<StickerPack>> packs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kPacks);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      return (jsonDecode(raw) as List)
+          .whereType<Map>()
+          .map((e) => StickerPack.fromJson(e.cast<String, dynamic>()))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> savePacks(List<StickerPack> packs) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPacks, jsonEncode(packs.map((p) => p.toJson()).toList()));
+  }
+
+  static Future<void> addPack(StickerPack pack) async {
+    final list = await packs();
+    list.removeWhere((p) => p.id == pack.id);
+    list.insert(0, pack);
+    await savePacks(list);
+  }
+
+  static Future<void> removePack(String id) async {
+    final list = await packs();
+    list.removeWhere((p) => p.id == id);
+    await savePacks(list);
+  }
 }

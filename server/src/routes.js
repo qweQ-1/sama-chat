@@ -799,4 +799,89 @@ export function registerApiRoutes(app, io) {
     await save();
     return { ok: true };
   });
+
+  // ---------- 表情商店（所有人可发布图片/GIF 表情整合包） ----------
+  const packDto = (p, uid) => ({
+    id: p.id,
+    name: p.name,
+    authorId: p.authorId,
+    authorName: p.authorName ?? '',
+    stickers: p.stickers ?? [],
+    downloads: (p.downloads ?? []).length,
+    downloaded: (p.downloads ?? []).includes(uid),
+    createdAt: p.createdAt,
+  });
+
+  // 商店列表（最新在前）。
+  app.get('/stickers/store', { preHandler: app.auth }, async (req) => {
+    const packs = [...db.data.stickerPacks]
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      .slice(0, 200)
+      .map((p) => packDto(p, req.userId));
+    return { packs };
+  });
+
+  // 发布表情包（名称 + 已上传的表情图片 URL 列表；支持 gif 动图）。
+  app.post('/stickers/packs', { preHandler: app.auth }, async (req, reply) => {
+    const name = String(req.body?.name ?? '').trim().slice(0, 30);
+    if (!name) {
+      return reply.code(400).send({ error: 'empty_name', message: '给表情包起个名字吧' });
+    }
+    const stickers = (Array.isArray(req.body?.stickers) ? req.body.stickers : [])
+      .slice(0, 50)
+      .map((s) => String(s))
+      .filter((s) => s.startsWith('/uploads/') && s.length < 300);
+    if (stickers.length === 0) {
+      return reply.code(400).send({ error: 'empty_pack', message: '表情包至少要有 1 个表情' });
+    }
+    const u = findUserById(req.userId);
+    const pack = {
+      id: newId('pk'),
+      authorId: u.id,
+      authorName: u.displayName || u.username,
+      name,
+      stickers,
+      downloads: [],
+      createdAt: now(),
+    };
+    db.data.stickerPacks.push(pack);
+    await save();
+    return { pack: packDto(pack, req.userId) };
+  });
+
+  // 下载（收藏）表情包 → 之后在聊天表情面板里作为独立分区直接使用。
+  app.post('/stickers/packs/:id/download', { preHandler: app.auth }, async (req, reply) => {
+    const p = db.data.stickerPacks.find((x) => x.id === req.params.id);
+    if (!p) {
+      return reply.code(404).send({ error: 'not_found', message: '表情包不存在或已被删除' });
+    }
+    p.downloads ??= [];
+    if (!p.downloads.includes(req.userId)) p.downloads.push(req.userId);
+    await save();
+    return { pack: packDto(p, req.userId) };
+  });
+
+  // 我下载过的表情包（完整数据）。
+  app.get('/stickers/downloaded', { preHandler: app.auth }, async (req) => {
+    const packs = db.data.stickerPacks
+      .filter((p) => (p.downloads ?? []).includes(req.userId))
+      .map((p) => packDto(p, req.userId));
+    return { packs };
+  });
+
+  // 删除表情包（作者本人，或公告管理员）。
+  app.delete('/stickers/packs/:id', { preHandler: app.auth }, async (req, reply) => {
+    const i = db.data.stickerPacks.findIndex((x) => x.id === req.params.id);
+    if (i < 0) {
+      return reply.code(404).send({ error: 'not_found', message: '表情包不存在' });
+    }
+    const p = db.data.stickerPacks[i];
+    const u = findUserById(req.userId);
+    if (p.authorId !== req.userId && !canAnnounce(u)) {
+      return reply.code(403).send({ error: 'not_owner', message: '只能删除自己的表情包' });
+    }
+    db.data.stickerPacks.splice(i, 1);
+    await save();
+    return { ok: true };
+  });
 }

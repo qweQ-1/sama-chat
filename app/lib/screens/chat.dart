@@ -13,6 +13,7 @@ import '../store.dart';
 import '../widgets.dart';
 import 'group_info.dart';
 import 'sticker_panel.dart';
+import 'sticker_store.dart';
 import 'video_viewer.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -122,6 +123,26 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {
       if (mounted) showError(context, '表情发送失败，请重试');
     }
+  }
+
+  /// 发送表情包里的表情（服务器已有，直接引用 URL）。
+  Future<void> _sendStickerUrl(String url) async {
+    final s = context.read<AppState>();
+    try {
+      await s.sendStickerUrl(convId, url);
+    } on ApiException catch (e) {
+      if (mounted) showError(context, e.message);
+    } catch (_) {
+      if (mounted) showError(context, '表情发送失败，请重试');
+    }
+  }
+
+  /// 打开表情商店（返回后刷新面板）。
+  Future<void> _openStore() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const StickerStoreScreen()),
+    );
   }
 
   Future<void> _sendImage() async {
@@ -370,6 +391,8 @@ class _ChatScreenState extends State<ChatScreen> {
             StickerPanel(
               onEmoji: _insertEmoji,
               onSticker: _sendSticker,
+              onStickerUrl: _sendStickerUrl,
+              onOpenStore: _openStore,
             ),
               ],
             ),

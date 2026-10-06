@@ -147,6 +147,41 @@ class Api {
     await _req('POST', '/announce/ack', body: {'ids': ids});
   }
 
+  // ---------------- 表情商店 ----------------
+  /// 商店列表（最新在前）。
+  Future<List<StickerPack>> stickerStore() async {
+    final j = await _req('GET', '/stickers/store');
+    return ((j['packs'] as List?) ?? const [])
+        .map((e) => StickerPack.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  /// 发布表情包（名称 + 已上传的图片 URL 列表）。
+  Future<StickerPack> publishStickerPack(String name, List<String> urls) async {
+    final j = await _req('POST', '/stickers/packs',
+        body: {'name': name, 'stickers': urls});
+    return StickerPack.fromJson((j['pack'] as Map).cast<String, dynamic>());
+  }
+
+  /// 下载表情包 → 之后可在聊天表情面板的「表情包」分区直接使用。
+  Future<StickerPack> downloadStickerPack(String id) async {
+    final j = await _req('POST', '/stickers/packs/$id/download');
+    return StickerPack.fromJson((j['pack'] as Map).cast<String, dynamic>());
+  }
+
+  /// 我下载过的表情包。
+  Future<List<StickerPack>> downloadedPacks() async {
+    final j = await _req('GET', '/stickers/downloaded');
+    return ((j['packs'] as List?) ?? const [])
+        .map((e) => StickerPack.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  /// 删除表情包（作者本人或管理员）。
+  Future<void> deleteStickerPack(String id) async {
+    await _req('DELETE', '/stickers/packs/$id');
+  }
+
   Future<(String, User)> login(String username, String password) async {
     final j = await _req('POST', '/auth/login',
         body: {'username': username, 'password': password}, auth: false);

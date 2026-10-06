@@ -494,6 +494,33 @@ const weirdMsg = await api('POST', `/conversations/${convId}/messages`, {
 });
 ok('非法类型回退为文本', weirdMsg.status === 200 && weirdMsg.json?.message?.type === 'text');
 
+console.log('\n== 19. 表情商店 ==');
+const st2 = await api('POST', '/upload', { token: A, body: { data: pngB64, ext: 'png' } });
+const stPack = await api('POST', '/stickers/packs', {
+  token: A, body: { name: '小狗表情包', stickers: [stUp.json.url, st2.json.url] },
+});
+ok('发布表情包', stPack.status === 200 && stPack.json?.pack?.stickers?.length === 2);
+const stPackId = stPack.json.pack.id;
+const store1 = await api('GET', '/stickers/store', { token: B });
+ok('商店里能看到新表情包', (store1.json?.packs ?? []).some((p) => p.id === stPackId && p.name === '小狗表情包'));
+ok('商店显示作者名', (store1.json?.packs ?? []).some((p) => p.id === stPackId && p.authorName === '爱丽丝'));
+const dl = await api('POST', `/stickers/packs/${stPackId}/download`, { token: B });
+ok('下载表情包（B 下载 A 的）', dl.status === 200 && dl.json?.pack?.stickers?.length === 2);
+const mineDl = await api('GET', '/stickers/downloaded', { token: B });
+ok('已下载列表包含该包', (mineDl.json?.packs ?? []).some((p) => p.id === stPackId));
+const store2b = await api('GET', '/stickers/store', { token: B });
+ok('下载数 +1 且标记已下载', (store2b.json?.packs ?? []).some((p) => p.id === stPackId && p.downloads === 1 && p.downloaded === true));
+const del403 = await api('DELETE', `/stickers/packs/${stPackId}`, { token: B });
+ok('非作者删除被拒(403)', del403.status === 403);
+const badName = await api('POST', '/stickers/packs', { token: A, body: { name: '  ', stickers: [stUp.json.url] } });
+ok('空名称被拒(400)', badName.status === 400);
+const emptyPack = await api('POST', '/stickers/packs', { token: A, body: { name: 'x', stickers: [] } });
+ok('空表情包被拒(400)', emptyPack.status === 400);
+const delOwn = await api('DELETE', `/stickers/packs/${stPackId}`, { token: A });
+ok('作者删除成功', delOwn.status === 200 && delOwn.json?.ok === true);
+const store3 = await api('GET', '/stickers/store', { token: B });
+ok('删除后商店里消失', !(store3.json?.packs ?? []).some((p) => p.id === stPackId));
+
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 
 console.log(`\n===== RESULT: ${pass} passed, ${fail} failed =====`);

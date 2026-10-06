@@ -30,6 +30,7 @@ for (const c of db.data.conversations) {
 }
 db.data.blocks ??= [];
 db.data.announcements ??= [];
+db.data.stickerPacks ??= []; // 表情商店：{id, authorId, authorName, name, stickers[], downloads[], createdAt}
 for (const u of db.data.users) {
   u.phone ??= '';
   u.email ??= '';

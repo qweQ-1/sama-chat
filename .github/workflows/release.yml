@@ -95,7 +95,8 @@ jobs:
           SETUP="$(find . -name '*setup*.exe' | head -1)"
           if [ -n "$APK" ]; then mv "$APK" "SamaChat-${VERSION}.apk"; fi
           if [ -n "$IPA" ]; then mv "$IPA" "SamaChat-${VERSION}-unsigned.ipa"; fi
-          if [ -n "$SETUP" ]; then mv "$SETUP" "SamaChat-${VERSION}-setup.exe"; fi
+          TARGET="SamaChat-${VERSION}-setup.exe"
+          if [ -n "$SETUP" ] && [ "$(basename "$SETUP")" != "$TARGET" ]; then mv "$SETUP" "$TARGET"; fi
           ls -la
           test -f "SamaChat-${VERSION}.apk"
           test -f "SamaChat-${VERSION}-unsigned.ipa"

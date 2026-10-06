@@ -241,29 +241,35 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------- 通知 / 保活
   Future<void> setNotifications(bool v) async {
     notificationsEnabled = v;
+    notifyListeners(); // 先刷新界面，保存失败/变慢也不影响开关响应
     if (v) unawaited(AppNotifications.requestPermissions());
-    await _prefs?.setBool('notifications', v);
-    notifyListeners();
+    try {
+      await _prefs?.setBool('notifications', v);
+    } catch (_) {}
   }
 
   Future<void> setKeepAlive(bool v) async {
     keepAliveEnabled = v;
+    notifyListeners(); // 先刷新界面
     if (v) {
       unawaited(KeepAliveService.start());
     } else {
       unawaited(KeepAliveService.stop());
     }
-    await _prefs?.setBool('keepAlive', v);
-    notifyListeners();
+    try {
+      await _prefs?.setBool('keepAlive', v);
+    } catch (_) {}
   }
 
   // ------------------------------------------------------- 自动检查更新
   /// 设置自动检查更新的间隔（分钟；0 = 关闭后台自动检查）。
   Future<void> setUpdateInterval(int minutes) async {
     updateIntervalMinutes = minutes;
-    await _prefs?.setInt('updateIntervalMinutes', minutes);
+    notifyListeners(); // 先刷新界面
     _startUpdateTimer();
-    notifyListeners();
+    try {
+      await _prefs?.setInt('updateIntervalMinutes', minutes);
+    } catch (_) {}
   }
 
   void _startUpdateTimer() {
@@ -286,8 +292,10 @@ class AppState extends ChangeNotifier {
   /// 开关「启动时自动检查更新」。
   Future<void> setCheckUpdateOnLaunch(bool v) async {
     checkUpdateOnLaunchEnabled = v;
-    await _prefs?.setBool('updateCheckOnLaunch', v);
-    notifyListeners();
+    notifyListeners(); // 先刷新界面
+    try {
+      await _prefs?.setBool('updateCheckOnLaunch', v);
+    } catch (_) {}
   }
 
   Future<void> _timedUpdateCheck() async {

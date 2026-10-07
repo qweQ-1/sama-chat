@@ -245,5 +245,7 @@ String previewOf(Message? m, String? myId) {
   if (m.isSticker) return '$who[表情]';
   if (m.isImage) return '$who[图片]';
   if (m.isVideo) return '$who[视频]';
+  if (m.isVoice) return '$who[语音]';
+  if (m.isFile) return '$who[文件] ${m.fileName}';
   return '$who${m.content}';
 }

@@ -1,7 +1,7 @@
 name: samachat
 description: "sama-chat — 私聊 · 群聊 · 炫圈，轻量实时聊天应用"
 publish_to: 'none'
-version: 2.1.1+22
+version: 2.2.0+23
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -31,6 +31,8 @@ dependencies:
   video_player: ^2.8.0
   video_player_win: ^3.3.0 # Windows 桌面版视频播放（其他平台自动跳过）
   local_notifier: ^0.1.6 # Windows / macOS / Linux 桌面系统通知
+  record: ^6.1.2 # 语音消息录音（按住说话）
+  file_picker: ^8.3.7 # 文件消息选择（经典稳定 API）
 
 dev_dependencies:
   flutter_test:

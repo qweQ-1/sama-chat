@@ -51,7 +51,7 @@ class Message {
   final String id;
   final String conversationId;
   final String senderId;
-  final String type; // 'text' | 'image' | 'video'
+  final String type; // 'text' | 'image' | 'video' | 'sticker' | 'voice' | 'file'
   final String content;
   final int createdAt;
   final List<String> readBy;
@@ -59,6 +59,11 @@ class Message {
   final bool recalled;
   final bool pending; // 本地乐观消息（还没被服务器确认）
   final bool failed;  // 发送失败
+  final int duration; // 语音时长（秒）
+  final String fileName; // 文件消息: 文件名
+  final int fileSize;    // 文件消息: 字节数
+  final String replyToId; // 引用回复的消息 id
+  final String replyPreview; // 引用预览文字
 
   Message({
     required this.id,
@@ -72,11 +77,19 @@ class Message {
     this.recalled = false,
     this.pending = false,
     this.failed = false,
+    this.duration = 0,
+    this.fileName = '',
+    this.fileSize = 0,
+    this.replyToId = '',
+    this.replyPreview = '',
   });
 
   bool get isImage => type == 'image';
   bool get isVideo => type == 'video';
   bool get isSticker => type == 'sticker';
+  bool get isVoice => type == 'voice';
+  bool get isFile => type == 'file';
+  bool get isText => type == 'text';
 
   factory Message.fromJson(Map<String, dynamic> j) => Message(
         id: j['id'] as String,
@@ -91,9 +104,21 @@ class Message {
             ? User.fromJson((j['sender'] as Map).cast<String, dynamic>())
             : null,
         recalled: j['recalled'] as bool? ?? false,
+        duration: (j['duration'] as num?)?.toInt() ?? 0,
+        fileName: j['fileName'] as String? ?? '',
+        fileSize: (j['fileSize'] as num?)?.toInt() ?? 0,
+        replyToId: j['replyToId'] as String? ?? '',
+        replyPreview: j['replyPreview'] as String? ?? '',
       );
 
-  Message copyWith({String? content, bool? recalled, bool? pending, bool? failed}) =>
+  Message copyWith({
+    String? content,
+    bool? recalled,
+    bool? pending,
+    bool? failed,
+    String? replyToId,
+    String? replyPreview,
+  }) =>
       Message(
         id: id,
         conversationId: conversationId,
@@ -106,6 +131,11 @@ class Message {
         recalled: recalled ?? this.recalled,
         pending: pending ?? this.pending,
         failed: failed ?? this.failed,
+        duration: duration,
+        fileName: fileName,
+        fileSize: fileSize,
+        replyToId: replyToId ?? this.replyToId,
+        replyPreview: replyPreview ?? this.replyPreview,
       );
 }
 
@@ -120,6 +150,8 @@ class Conversation {
   final String? ownerId;
   final List<String> adminIds;
   final Map<String, int> mutes;
+  final bool pinned; // 我置顶了该会话
+  final bool muted; // 我免打扰了该会话
 
   Conversation({
     required this.id,
@@ -132,6 +164,8 @@ class Conversation {
     this.ownerId,
     this.adminIds = const [],
     this.mutes = const {},
+    this.pinned = false,
+    this.muted = false,
   });
 
   bool get isGroup => type == 'group';
@@ -159,9 +193,11 @@ class Conversation {
               (k, v) => MapEntry(k.toString(), (v as num).toInt()),
             ) ??
             const {},
+        pinned: j['pinned'] as bool? ?? false,
+        muted: j['muted'] as bool? ?? false,
       );
 
-  Conversation copyWith({Message? lastMessage, int? unread}) => Conversation(
+  Conversation copyWith({Message? lastMessage, int? unread, bool? pinned, bool? muted}) => Conversation(
         id: id,
         type: type,
         name: name,
@@ -172,6 +208,8 @@ class Conversation {
         ownerId: ownerId,
         adminIds: adminIds,
         mutes: mutes,
+        pinned: pinned ?? this.pinned,
+        muted: muted ?? this.muted,
       );
 }
 
@@ -279,6 +317,98 @@ class StickerPack {
         'downloaded': downloaded,
         'createdAt': createdAt,
       };
+}
+
+/// 群投票选项。
+class PollOption {
+  final String id;
+  final String text;
+  final int count;
+  final bool votedByMe;
+
+  PollOption({
+    required this.id,
+    required this.text,
+    required this.count,
+    required this.votedByMe,
+  });
+
+  factory PollOption.fromJson(Map<String, dynamic> j) => PollOption(
+        id: j['id'] as String? ?? '',
+        text: j['text'] as String? ?? '',
+        count: (j['count'] as num?)?.toInt() ?? 0,
+        votedByMe: j['votedByMe'] as bool? ?? false,
+      );
+}
+
+/// 群投票。
+class Poll {
+  final String id;
+  final String conversationId;
+  final String creatorId;
+  final String creatorName;
+  final String question;
+  final List<PollOption> options;
+  final int totalVotes;
+  final bool closed;
+  final int createdAt;
+
+  Poll({
+    required this.id,
+    required this.conversationId,
+    required this.creatorId,
+    this.creatorName = '',
+    required this.question,
+    required this.options,
+    this.totalVotes = 0,
+    this.closed = false,
+    this.createdAt = 0,
+  });
+
+  factory Poll.fromJson(Map<String, dynamic> j) => Poll(
+        id: j['id'] as String? ?? '',
+        conversationId: j['conversationId'] as String? ?? '',
+        creatorId: j['creatorId'] as String? ?? '',
+        creatorName: j['creatorName'] as String? ?? '',
+        question: j['question'] as String? ?? '',
+        options: ((j['options'] as List?) ?? const [])
+            .map((e) => PollOption.fromJson((e as Map).cast<String, dynamic>()))
+            .toList(),
+        totalVotes: (j['totalVotes'] as num?)?.toInt() ?? 0,
+        closed: j['closed'] as bool? ?? false,
+        createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// 搜索结果（消息命中的一条）。
+class SearchHit {
+  final String id;
+  final String conversationId;
+  final String conversationName;
+  final bool isGroup;
+  final String senderName;
+  final String content;
+  final int createdAt;
+
+  SearchHit({
+    required this.id,
+    required this.conversationId,
+    required this.conversationName,
+    required this.isGroup,
+    required this.senderName,
+    required this.content,
+    required this.createdAt,
+  });
+
+  factory SearchHit.fromJson(Map<String, dynamic> j) => SearchHit(
+        id: j['id'] as String? ?? '',
+        conversationId: j['conversationId'] as String? ?? '',
+        conversationName: j['conversationName'] as String? ?? '',
+        isGroup: j['isGroup'] as bool? ?? false,
+        senderName: j['senderName'] as String? ?? '',
+        content: j['content'] as String? ?? '',
+        createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
+      );
 }
 
 /// 系统公告（管理员发布；每人只弹一次）。

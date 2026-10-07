@@ -6,6 +6,7 @@ import '../store.dart';
 import '../widgets.dart';
 import 'chat.dart';
 import 'new_group.dart';
+import 'search.dart';
 
 class ChatsTab extends StatelessWidget {
   const ChatsTab({super.key});
@@ -19,6 +20,14 @@ class ChatsTab extends StatelessWidget {
       appBar: AppBar(
         title: const Text('消息', style: TextStyle(fontWeight: FontWeight.w600)),
         actions: [
+          IconButton(
+            tooltip: '搜索聊天记录',
+            icon: const Icon(Icons.search),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SearchScreen()),
+            ),
+          ),
           IconButton(
             tooltip: '发起群聊',
             icon: const Icon(Icons.group_add_outlined),
@@ -73,6 +82,41 @@ class _ConversationTile extends StatelessWidget {
   final String? avatarUrl;
   const _ConversationTile({required this.conversation, this.myId, this.avatarUrl});
 
+  Future<void> _showActions(BuildContext context) async {
+    final s = context.read<AppState>();
+    final c = conversation;
+    await showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(c.pinned
+                  ? Icons.push_pin_outlined
+                  : Icons.push_pin),
+              title: Text(c.pinned ? '取消置顶' : '置顶聊天'),
+              onTap: () {
+                Navigator.pop(ctx);
+                s.setConvPrefs(c.id, pinned: !c.pinned);
+              },
+            ),
+            ListTile(
+              leading: Icon(c.muted
+                  ? Icons.notifications_active_outlined
+                  : Icons.notifications_off_outlined),
+              title: Text(c.muted ? '取消免打扰' : '消息免打扰'),
+              onTap: () {
+                Navigator.pop(ctx);
+                s.setConvPrefs(c.id, muted: !c.muted);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = conversation;
@@ -101,11 +145,23 @@ class _ConversationTile extends StatelessWidget {
             ),
         ],
       ),
-      title: Text(
-        c.isGroup ? '${c.name} (${c.memberCount})' : c.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.w500),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              c.isGroup ? '${c.name} (${c.memberCount})' : c.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ),
+          if (c.muted)
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: Icon(Icons.notifications_off_outlined,
+                  size: 14, color: Colors.grey.shade400),
+            ),
+        ],
       ),
       subtitle: Text(
         previewOf(c.lastMessage, myId),
@@ -119,7 +175,7 @@ class _ConversationTile extends StatelessWidget {
         children: [
           Text(time, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
           const SizedBox(height: 4),
-          if (c.unread > 0)
+          if (c.unread > 0 && !c.muted)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
@@ -133,6 +189,15 @@ class _ConversationTile extends StatelessWidget {
                 style: const TextStyle(color: Colors.white, fontSize: 11),
               ),
             )
+          else if (c.unread > 0)
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            )
           else
             const SizedBox(height: 16),
         ],
@@ -141,6 +206,7 @@ class _ConversationTile extends StatelessWidget {
         context,
         MaterialPageRoute(builder: (_) => ChatScreen(conversation: c)),
       ),
+      onLongPress: () => _showActions(context),
     );
   }
 }

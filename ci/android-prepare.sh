@@ -40,6 +40,11 @@ if [ -f "$MANIFEST" ]; then
     sed -i 's|<manifest\([^>]*\)>|<manifest\1>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>|' "$MANIFEST"
   fi
 
+  # 语音消息：录音权限
+  if ! grep -q 'RECORD_AUDIO' "$MANIFEST"; then
+    sed -i 's|<manifest\([^>]*\)>|<manifest\1>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>|' "$MANIFEST"
+  fi
+
   echo "--- manifest network config ---"
   grep -o 'android.permission.INTERNET\|POST_NOTIFICATIONS\|ForegroundService' "$MANIFEST" || true
 fi

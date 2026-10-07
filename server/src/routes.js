@@ -41,11 +41,16 @@ const MIME = {
   mov: 'video/quicktime',
   m4v: 'video/x-m4v',
   webm: 'video/webm',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
 };
 const MAX_UPLOAD_BYTES = 6 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 48 * 1024 * 1024;
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MEDIA_NAME_RE =
-  /^(img|vid)_[A-Za-z0-9_-]{6,32}\.(jpg|jpeg|png|gif|webp|mp4|mov|m4v|webm)$/;
+  /^(?:(img|vid)_[A-Za-z0-9_-]{6,48}\.(jpg|jpeg|png|gif|webp|mp4|mov|m4v|webm)|f_[A-Za-z0-9_-]{6,48}(\.[A-Za-z0-9]{1,10})?)$/;
 
 export function registerApiRoutes(app, io) {
   // ---------- uploads ----------
@@ -71,6 +76,34 @@ export function registerApiRoutes(app, io) {
     fs.writeFileSync(path.join(UPLOAD_DIR, name), buf);
     return { url: `/uploads/${name}`, size: buf.length };
   });
+
+  // 通用文件上传（任意类型：文档/压缩包/音频等；原始二进制）。
+  app.post(
+    '/upload/file',
+    { preHandler: app.auth, bodyLimit: 27 * 1024 * 1024 },
+    async (req, reply) => {
+      const ext = String(req.query?.ext ?? '')
+        .toLowerCase()
+        .replace(/^\./, '')
+        .replace(/[^a-z0-9]/g, '')
+        .slice(0, 10);
+      const buf = req.body;
+      if (!Buffer.isBuffer(buf) || buf.length === 0) {
+        return reply.code(400).send({ error: 'empty', message: '文件数据为空' });
+      }
+      if (buf.length > MAX_FILE_BYTES) {
+        return reply.code(413).send({ error: 'too_large', message: '文件过大（限 25MB）' });
+      }
+      const suffix = ext ? `.${ext}` : '';
+      const name = `${newId('f')}${suffix}`;
+      fs.writeFileSync(path.join(UPLOAD_DIR, name), buf);
+      return {
+        url: `/uploads/${name}`,
+        name: String(req.query?.name ?? '').slice(0, 120),
+        size: buf.length,
+      };
+    },
+  );
 
   // Raw binary video upload (application/octet-stream) — avoids base64 overhead.
   app.post(
@@ -331,6 +364,7 @@ export function registerApiRoutes(app, io) {
         const remark = friendRecord(req.userId, peerId ?? '')?.remark;
         title = remark && remark.length > 0 ? remark : peer?.displayName ?? '未知用户';
       }
+      const pref = (me?.convPrefs ?? {})[c.id] ?? {};
       return {
         id: c.id,
         type: c.type,
@@ -346,12 +380,66 @@ export function registerApiRoutes(app, io) {
                 !(m.readBy ?? []).includes(req.userId),
             ).length
           : 0,
+        pinned: pref.pinned === true,
+        muted: pref.muted === true,
       };
     });
     list.sort(
       (a, b) => (b.lastMessage?.createdAt ?? 0) - (a.lastMessage?.createdAt ?? 0),
     );
     return { conversations: list };
+  });
+
+  // 会话偏好：置顶 / 免打扰。
+  app.post('/conversations/:id/prefs', { preHandler: app.auth }, async (req, reply) => {
+    const conv = db.data.conversations.find((c) => c.id === req.params.id);
+    if (!conv || !conv.memberIds.includes(req.userId)) {
+      return reply.code(404).send({ error: 'not_found', message: '会话不存在' });
+    }
+    const me = findUserById(req.userId);
+    me.convPrefs ??= {};
+    const pref = me.convPrefs[conv.id] ?? {};
+    if (req.body?.pinned !== undefined) pref.pinned = req.body.pinned === true;
+    if (req.body?.muted !== undefined) pref.muted = req.body.muted === true;
+    me.convPrefs[conv.id] = pref;
+    await save();
+    return { pinned: pref.pinned === true, muted: pref.muted === true };
+  });
+
+  // 搜索消息 / 会话（限我参与的会话）。
+  app.get('/search', { preHandler: app.auth }, async (req, reply) => {
+    const q = String(req.query?.q ?? '').trim();
+    if (!q) return reply.code(400).send({ error: 'empty', message: '请输入搜索内容' });
+    const lower = q.toLowerCase();
+    const myConvs = conversationsOf(req.userId);
+    const convById = new Map(myConvs.map((c) => [c.id, c]));
+    const hits = [];
+    for (let i = db.data.messages.length - 1; i >= 0 && hits.length < 60; i--) {
+      const m = db.data.messages[i];
+      if (m.recalled || m.type !== 'text') continue;
+      const conv = convById.get(m.conversationId);
+      if (!conv) continue;
+      if (!String(m.content ?? '').toLowerCase().includes(lower)) continue;
+      let title;
+      if (conv.type === 'group') title = conv.name;
+      else {
+        const peerId = conv.memberIds.find((x) => x !== req.userId);
+        const peer = findUserById(peerId);
+        const remark = friendRecord(req.userId, peerId ?? '')?.remark;
+        title = remark && remark.length > 0 ? remark : peer?.displayName ?? '聊天';
+      }
+      hits.push({
+        id: m.id,
+        conversationId: m.conversationId,
+        conversationName: title,
+        isGroup: conv.type === 'group',
+        senderId: m.senderId,
+        senderName: m.sender?.displayName ?? findUserById(m.senderId)?.displayName ?? '',
+        content: String(m.content).slice(0, 300),
+        createdAt: m.createdAt,
+      });
+    }
+    return { results: hits };
   });
 
   app.post('/conversations/private', { preHandler: app.auth }, async (req, reply) => {
@@ -667,14 +755,66 @@ export function registerApiRoutes(app, io) {
       conversationId: conv.id,
       senderId: req.userId,
       sender: publicUser(findUserById(req.userId)),
-      type: ['image', 'video', 'sticker'].includes(req.body?.type) ? req.body.type : 'text',
+      type: ['image', 'video', 'sticker', 'voice', 'file'].includes(req.body?.type)
+        ? req.body.type
+        : 'text',
       content,
       createdAt: now(),
       readBy: [req.userId],
     };
+    if (message.type === 'file') {
+      message.fileName = String(req.body?.fileName ?? '').slice(0, 120);
+      message.fileSize = Number(req.body?.fileSize ?? 0) || 0;
+    }
+    if (message.type === 'voice') {
+      message.duration = Math.min(Math.max(Number(req.body?.duration ?? 0) || 0, 0), 300);
+    }
+    const replyToId = String(req.body?.replyToId ?? '');
+    if (replyToId) {
+      const orig = db.data.messages.find(
+        (m) => m.id === replyToId && m.conversationId === conv.id,
+      );
+      if (orig) {
+        message.replyToId = orig.id;
+        const senderName = orig.sender?.displayName ?? '';
+        const body =
+          orig.type === 'text'
+            ? String(orig.content ?? '')
+            : orig.type === 'image'
+              ? '[图片]'
+              : orig.type === 'video'
+                ? '[视频]'
+                : orig.type === 'sticker'
+                  ? '[表情]'
+                  : orig.type === 'voice'
+                    ? '[语音]'
+                    : orig.type === 'file'
+                      ? '[文件]'
+                      : '';
+        message.replyPreview = `${senderName ? senderName + ': ' : ''}${body}`.slice(0, 120);
+      }
+    }
     db.data.messages.push(message);
     await save();
     io?.toConversation(conv, 'message:new', { message });
+    // @提及 → 给被提及的人额外推一个高亮事件
+    if (conv.type === 'group') {
+      for (const m of new Set(String(content).match(/@\S+/g) ?? [])) {
+        const name = m.slice(1);
+        const hit = conv.memberIds.find((id) => {
+          const u = findUserById(id);
+          return u && (u.displayName === name || u.username === name);
+        });
+        if (hit) {
+          io?.toUser(hit, 'group:mention', {
+            conversationId: conv.id,
+            conversationName: conv.name,
+            from: publicUser(findUserById(req.userId)),
+            content: String(content).slice(0, 150),
+          });
+        }
+      }
+    }
     return { message };
   });
 
@@ -776,6 +916,14 @@ export function registerApiRoutes(app, io) {
     if (i >= 0) moment.likes.splice(i, 1);
     else moment.likes.push(req.userId);
     await save();
+    // 通知动态作者（自己赞自己不通知）
+    if (i < 0 && moment.authorId !== req.userId) {
+      io?.toUser(moment.authorId, 'moment:interaction', {
+        momentId: moment.id,
+        kind: 'like',
+        from: publicUser(findUserById(req.userId)),
+      });
+    }
     return { liked: i < 0, likeCount: moment.likes.length };
   });
 
@@ -793,6 +941,27 @@ export function registerApiRoutes(app, io) {
     };
     moment.comments.push(comment);
     await save();
+    // 通知动态作者 / 被回复的评论者
+    if (moment.authorId !== req.userId) {
+      io?.toUser(moment.authorId, 'moment:interaction', {
+        momentId: moment.id,
+        kind: 'comment',
+        text,
+        from: publicUser(findUserById(req.userId)),
+      });
+    }
+    const parentId = String(req.body?.parentId ?? '');
+    if (parentId) {
+      const parent = moment.comments.find((c) => c.id === parentId);
+      if (parent && parent.authorId && parent.authorId !== req.userId && parent.authorId !== moment.authorId) {
+        io?.toUser(parent.authorId, 'moment:interaction', {
+          momentId: moment.id,
+          kind: 'reply',
+          text,
+          from: publicUser(findUserById(req.userId)),
+        });
+      }
+    }
     return { comment };
   });
 
@@ -882,6 +1051,130 @@ export function registerApiRoutes(app, io) {
     u.seenAnns = [...seen].slice(-300);
     await save();
     return { ok: true };
+  });
+
+  // ---------- 群投票 ----------
+  const pollDto = (p, uid) => ({
+    id: p.id,
+    conversationId: p.conversationId,
+    creatorId: p.creatorId,
+    creatorName: p.creatorName ?? '',
+    question: p.question,
+    options: p.options.map((o) => ({
+      id: o.id,
+      text: o.text,
+      count: o.votes.length,
+      votedByMe: o.votes.includes(uid),
+    })),
+    totalVotes: new Set(p.options.flatMap((o) => o.votes)).size,
+    multiple: p.multiple === true,
+    closed: p.closed === true,
+    createdAt: p.createdAt,
+  });
+
+  // 发起投票（群成员均可）。
+  app.post('/conversations/:id/polls', { preHandler: app.auth }, async (req, reply) => {
+    const conv = db.data.conversations.find((c) => c.id === req.params.id);
+    if (!conv || !conv.memberIds.includes(req.userId)) {
+      return reply.code(404).send({ error: 'not_found', message: '会话不存在' });
+    }
+    if (conv.type !== 'group') {
+      return reply.code(400).send({ error: 'not_group', message: '只能在群里发起投票' });
+    }
+    const question = String(req.body?.question ?? '').trim().slice(0, 200);
+    const rawOptions = (Array.isArray(req.body?.options) ? req.body.options : [])
+      .map((s) => String(s).trim().slice(0, 60))
+      .filter((s) => s.length > 0)
+      .slice(0, 10);
+    if (!question) return reply.code(400).send({ error: 'empty', message: '投票主题不能为空' });
+    if (rawOptions.length < 2) {
+      return reply.code(400).send({ error: 'few_options', message: '至少要有 2 个选项' });
+    }
+    const u = findUserById(req.userId);
+    const poll = {
+      id: newId('poll'),
+      conversationId: conv.id,
+      creatorId: u.id,
+      creatorName: u.displayName || u.username,
+      question,
+      options: rawOptions.map((t) => ({ id: newId('op'), text: t, votes: [] })),
+      multiple: req.body?.multiple === true,
+      closed: false,
+      createdAt: now(),
+    };
+    db.data.polls.push(poll);
+    await save();
+    for (const m of conv.memberIds) {
+      io?.toUser(m, 'poll:new', { poll: pollDto(poll, m), conversationId: conv.id });
+    }
+    return { poll: pollDto(poll, req.userId) };
+  });
+
+  // 会话的投票列表。
+  app.get('/conversations/:id/polls', { preHandler: app.auth }, async (req, reply) => {
+    const conv = db.data.conversations.find((c) => c.id === req.params.id);
+    if (!conv || !conv.memberIds.includes(req.userId)) {
+      return reply.code(404).send({ error: 'not_found', message: '会话不存在' });
+    }
+    const polls = db.data.polls
+      .filter((p) => p.conversationId === conv.id)
+      .slice(-30)
+      .map((p) => pollDto(p, req.userId));
+    return { polls };
+  });
+
+  // 投票 / 取消投票。
+  app.post('/polls/:id/vote', { preHandler: app.auth }, async (req, reply) => {
+    const poll = db.data.polls.find((p) => p.id === req.params.id);
+    if (!poll) return reply.code(404).send({ error: 'not_found', message: '投票不存在' });
+    const conv = db.data.conversations.find((c) => c.id === poll.conversationId);
+    if (!conv || !conv.memberIds.includes(req.userId)) {
+      return reply.code(403).send({ error: 'forbidden', message: '你不在这个群里' });
+    }
+    if (poll.closed) return reply.code(400).send({ error: 'closed', message: '投票已结束' });
+    const optionIds = (Array.isArray(req.body?.optionIds) ? req.body.optionIds : [])
+      .map((s) => String(s));
+    if (optionIds.length === 0) {
+      return reply.code(400).send({ error: 'empty', message: '请选择选项' });
+    }
+    for (const o of poll.options) {
+      if (!optionIds.includes(o.id)) continue;
+      const i = o.votes.indexOf(req.userId);
+      if (i >= 0) o.votes.splice(i, 1); // 再点取消
+      else {
+        if (!poll.multiple) {
+          // 单选：先清除其它选项
+          for (const o2 of poll.options) {
+            const j = o2.votes.indexOf(req.userId);
+            if (j >= 0) o2.votes.splice(j, 1);
+          }
+        }
+        o.votes.push(req.userId);
+      }
+    }
+    await save();
+    for (const m of conv.memberIds) {
+      io?.toUser(m, 'poll:update', { poll: pollDto(poll, m), conversationId: conv.id });
+    }
+    return { poll: pollDto(poll, req.userId) };
+  });
+
+  // 结束投票（发起人；结束后不可再投）。
+  app.post('/polls/:id/close', { preHandler: app.auth }, async (req, reply) => {
+    const poll = db.data.polls.find((p) => p.id === req.params.id);
+    if (!poll) return reply.code(404).send({ error: 'not_found', message: '投票不存在' });
+    if (poll.creatorId !== req.userId) {
+      return reply.code(403).send({ error: 'not_owner', message: '只有发起人可以结束投票' });
+    }
+    poll.closed = true;
+    await save();
+    const conv = db.data.conversations.find((c) => c.id === poll.conversationId);
+    if (conv) {
+      for (const m of conv.memberIds) {
+        io?.toUser(m, 'poll:update', { poll: pollDto(poll, m), conversationId: conv.id });
+      }
+    }
+    return { poll: pollDto(poll, req.userId) };
   });
 
   // ---------- 表情商店（所有人可发布图片/GIF 表情整合包） ----------

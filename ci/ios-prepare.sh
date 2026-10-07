@@ -14,7 +14,7 @@ plist_set() {
 
 plist_set CFBundleDisplayName "萨摩聊天"
 plist_set NSCameraUsageDescription "用于扫描二维码，面对面添加好友"
-plist_set NSMicrophoneUsageDescription "拍摄视频时需要录制声音"
+plist_set NSMicrophoneUsageDescription "发送语音消息、拍摄视频时需要录制声音"
 plist_set NSPhotoLibraryUsageDescription "用于发送图片、视频、发布炫圈和更换头像"
 plist_set NSLocalNetworkUsageDescription "用于连接你的聊天服务器（局域网内测试时）"
 
@@ -26,6 +26,7 @@ plist_set NSLocalNetworkUsageDescription "用于连接你的聊天服务器（�
 # 后台音频模式：App 退到后台后保持在线接收消息（通知保活）
 /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:1 string fetch" "$PLIST" 2>/dev/null || true
 echo "--- UIBackgroundModes ---"
 /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$PLIST" 2>/dev/null || true
 

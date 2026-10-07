@@ -13,6 +13,7 @@ import 'blocklist.dart';
 import 'accounts.dart';
 import 'announce.dart';
 import 'sticker_store.dart';
+import 'favorites.dart';
 import '../updater.dart';
 
 class ProfileTab extends StatelessWidget {
@@ -332,6 +333,17 @@ class ProfileTab extends StatelessWidget {
             ),
           ),
           ListTile(
+            leading: const Icon(Icons.star_outline),
+            title: const Text('收藏'),
+            subtitle: const Text('长按消息 →「收藏」，在这里随时找回',
+                style: TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const FavoritesScreen()),
+            ),
+          ),
+          ListTile(
             leading: const Icon(Icons.switch_account_outlined),
             title: const Text('切换账号'),
             subtitle: Text(
@@ -368,12 +380,12 @@ class ProfileTab extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('${AppConfig.appName} v2.1.1',
+            subtitle: const Text('${AppConfig.appName} v2.2.0',
                 style: TextStyle(fontSize: 12)),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: AppConfig.appName,
-              applicationVersion: '2.1.1',
+              applicationVersion: '2.2.0',
               children: const [
                 Text('一个轻量的实时聊天应用：私聊、群聊、炫圈、面对面扫码加好友。'),
               ],

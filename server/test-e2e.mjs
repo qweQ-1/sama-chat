@@ -565,6 +565,137 @@ const bSendAfterDisband = await api('POST', `/conversations/${g2Id}/messages`, {
 ok('解散后无法发消息(404)', bSendAfterDisband.status === 404);
 bWs.ws.close();
 
+console.log('\n== 21. 语音/文件消息 + 回复 + @提及 ==');
+// 找回 A、B 的私聊会话
+const privList = await api('GET', '/conversations', { token: A });
+const priv = privList.json.conversations.find((c) => c.type === 'private');
+const privId2 = priv.id;
+const voiceMsg = await api('POST', `/conversations/${privId2}/messages`, {
+  token: A, body: { content: '/uploads/$(echo f_fake).m4a', type: 'voice', duration: 8 },
+});
+ok('发送语音消息(type=voice,duration=8)',
+  voiceMsg.status === 200 && voiceMsg.json?.message?.type === 'voice' && voiceMsg.json?.message?.duration === 8);
+const fileMsg = await api('POST', `/conversations/${privId2}/messages`, {
+  token: A, body: { content: stUp.json.url, type: 'file', fileName: '报告.pdf', fileSize: 12345 },
+});
+ok('发送文件消息(type=file)',
+  fileMsg.status === 200 && fileMsg.json?.message?.type === 'file' && fileMsg.json?.message?.fileName === '报告.pdf');
+const replyMsg = await api('POST', `/conversations/${privId2}/messages`, {
+  token: B, body: { content: '这就是回复', replyToId: voiceMsg.json.message.id },
+});
+ok('回复消息带引用预览',
+  replyMsg.status === 200 && replyMsg.json?.message?.replyToId === voiceMsg.json.message.id && String(replyMsg.json?.message?.replyPreview ?? '').includes('[语音]'));
+const voiceHist = await api('GET', `/conversations/${privId2}/messages`, { token: B });
+ok('历史保留 voice/file 类型',
+  voiceHist.json?.messages?.some((m) => m.type === 'voice' && m.duration === 8) &&
+  voiceHist.json?.messages?.some((m) => m.type === 'file' && m.fileName === '报告.pdf'));
+
+console.log('\n== 22. 搜索消息 ==');
+const searchMine = await api('GET', '/search?q=这就是回复', { token: A });
+ok('搜索能命中消息', (searchMine.json?.results ?? []).some((r) => r.content.includes('这就是回复')));
+const searchConvName = await api('GET', '/search?q=这就是回复', { token: A });
+ok('搜索结果含会话名', (searchConvName.json?.results ?? []).every((r) => !!r.conversationName));
+const searchOther = await api('GET', '/search?q=这就是回复', { token: C });
+ok('非会话成员搜不到(隔离)', !(searchOther.json?.results ?? []).some((r) => r.content.includes('这就是回复')));
+const searchEmpty = await api('GET', '/search?q=', { token: A });
+ok('空搜索被拒(400)', searchEmpty.status === 400);
+const searchNoWord = await api('GET', '/search?q=zzz_very_unlikely_word_404', { token: A });
+ok('搜不到时返回空列表', (searchNoWord.json?.results ?? []).length === 0);
+
+console.log('\n== 23. 置顶 / 免打扰 ==');
+const pinOn = await api('POST', `/conversations/${privId2}/prefs`, { token: A, body: { pinned: true } });
+ok('置顶成功', pinOn.status === 200 && pinOn.json?.pinned === true);
+const muteOn = await api('POST', `/conversations/${privId2}/prefs`, { token: A, body: { muted: true } });
+ok('免打扰成功', muteOn.status === 200 && muteOn.json?.muted === true);
+const listPinned = await api('GET', '/conversations', { token: A });
+const pConv = (listPinned.json?.conversations ?? []).find((c) => c.id === privId2);
+ok('会话列表返回 pinned/muted', pConv?.pinned === true && pConv?.muted === true);
+const otherPref = await api('POST', `/conversations/${privId2}/prefs`, { token: B, body: { pinned: true } });
+ok('他人偏好互不影响（B 可独立置顶）', otherPref.status === 200 && otherPref.json?.pinned === true);
+const pinOff = await api('POST', `/conversations/${privId2}/prefs`, { token: A, body: { pinned: false } });
+ok('取消置顶', pinOff.status === 200 && pinOff.json?.pinned === false);
+
+console.log('\n== 24. 文件上传 ==');
+// 注意：iSH 的 fetch polyfill 把二进制 body JSON 化 → 用原生 http 的 rawPost。
+const rawRes = await rawPost(
+  '/upload/file?ext=txt&name=' + encodeURIComponent('测试.txt'),
+  { Authorization: `Bearer ${A}`, 'Content-Type': 'application/octet-stream' },
+  Buffer.from([104, 105, 33]),
+);
+let rawJson = null;
+try { rawJson = JSON.parse(rawRes.body); } catch {}
+ok('文件上传成功', rawRes.status === 200 && !!rawJson?.url && rawJson?.size === 3, rawRes.body);
+ok('文件名回显', rawJson?.name === '测试.txt');
+ok('文件可下载', (await fetch(BASE + rawJson.url)).status === 200);
+const emptyRes = await rawPost(
+  '/upload/file?ext=txt',
+  { Authorization: `Bearer ${A}`, 'Content-Type': 'application/octet-stream' },
+  Buffer.alloc(0),
+);
+ok('空文件被拒(400)', emptyRes.status === 400, emptyRes.body);
+
+console.log('\n== 25. 炫圈互动通知 ==');
+const mPost = await api('POST', '/moments', { token: C, body: { text: '今天天气不错' } });
+const mId = mPost.json.moment.id;
+const cWatcher = await connectWs(C);
+const likeIt = await api('POST', `/moments/${mId}/like`, { token: A });
+ok('点赞成功', likeIt.status === 200 && likeIt.json?.liked === true);
+const likeEvt = await waitFor(cWatcher.events, 'moment:interaction', (d) => d?.kind === 'like' && d?.momentId === mId);
+ok('作者收到点赞通知', !!likeEvt && likeEvt.from?.username === 'alice');
+const cmtIt = await api('POST', `/moments/${mId}/comment`, { token: A, body: { text: '确实不错' } });
+ok('评论成功', cmtIt.status === 200 && !!cmtIt.json?.comment);
+const cmtEvt = await waitFor(cWatcher.events, 'moment:interaction', (d) => d?.kind === 'comment' && d?.momentId === mId);
+ok('作者收到评论通知', !!cmtEvt && cmtEvt.text === '确实不错');
+const selfLike = await api('POST', `/moments/${mId}/like`, { token: C });
+ok('自己赞自己不刷通知', selfLike.status === 200);
+const noLikeEvt = await waitFor(cWatcher.events, 'moment:interaction', (d) => d?.kind === 'like' && d?.from?.id === idC, 800);
+ok('（确认）自己操作无自我通知', noLikeEvt === null);
+cWatcher.ws.close();
+
+console.log('\n== 26. 群投票 ==');
+const g3 = await api('POST', '/conversations/group', {
+  token: A, body: { name: '投票群', memberIds: [idB, idC] },
+});
+const g3Id = g3.json.conversation.id;
+const aWs2 = await connectWs(A);
+const pollNew = await api('POST', `/conversations/${g3Id}/polls`, {
+  token: A, body: { question: '今晚吃啥？', options: ['火锅', '烧烤', '面条'] },
+});
+ok('发起投票(3选项)', pollNew.status === 200 && pollNew.json?.poll?.options?.length === 3);
+const pollId = pollNew.json.poll.id;
+const optA = pollNew.json.poll.options.map((o) => o.id);
+const pollEvt = await waitFor(aWs2.events, 'poll:new', (d) => d?.poll?.id === pollId);
+ok('群成员实时收到新投票', !!pollEvt);
+const vote1 = await api('POST', `/polls/${pollId}/vote`, { token: B, body: { optionIds: [optA[0]] } });
+ok('B 投票成功', vote1.status === 200 && vote1.json?.poll?.totalVotes === 1);
+const vote2 = await api('POST', `/polls/${pollId}/vote`, { token: B, body: { optionIds: [optA[1]] } });
+ok('单选：改投后旧票被清', vote2.status === 200 && vote2.json?.poll?.options[0].count === 0 && vote2.json?.poll?.options[1].count === 1);
+const vote3 = await api('POST', `/polls/${pollId}/vote`, { token: B, body: { optionIds: [optA[1]] } });
+ok('再点同项=取消投票', vote3.status === 200 && vote3.json?.poll?.totalVotes === 0);
+const voteC = await api('POST', `/polls/${pollId}/vote`, { token: C, body: { optionIds: [optA[2]] } });
+const updEvt = await waitFor(aWs2.events, 'poll:update', (d) => d?.poll?.id === pollId);
+ok('投票实时更新广播', !!updEvt);
+const pollList = await api('GET', `/conversations/${g3Id}/polls`, { token: B });
+ok('投票列表可查', (pollList.json?.polls ?? []).some((p) => p.id === pollId));
+const close403 = await api('POST', `/polls/${pollId}/close`, { token: B });
+ok('非发起人结束被拒(403)', close403.status === 403);
+const closeOk = await api('POST', `/polls/${pollId}/close`, { token: A });
+ok('发起人结束投票', closeOk.status === 200 && closeOk.json?.poll?.closed === true);
+const voteClosed = await api('POST', `/polls/${pollId}/vote`, { token: A, body: { optionIds: [optA[0]] } });
+ok('结束后投票被拒(400)', voteClosed.status === 400);
+const fewOpts = await api('POST', `/conversations/${g3Id}/polls`, {
+  token: A, body: { question: '只有一个选项', options: ['唯一'] },
+});
+ok('少于 2 个选项被拒(400)', fewOpts.status === 400);
+const privPoll = await api('POST', `/conversations/${convId}/polls`, {
+  token: A, body: { question: '私聊投票', options: ['a', 'b'] },
+});
+ok('私聊不能发投票(400)', privPoll.status === 400);
+ok('投票者是群里成员(隔离)', (pollList.json?.polls?.length ?? 0) === 1);
+const pollNoAuth = await api('GET', `/conversations/${g3Id}/polls`);
+ok('未登录查投票被拒(401)', pollNoAuth.status === 401);
+aWs2.ws.close();
+
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 
 console.log(`\n===== RESULT: ${pass} passed, ${fail} failed =====`);

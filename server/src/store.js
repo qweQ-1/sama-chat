@@ -31,11 +31,13 @@ for (const c of db.data.conversations) {
 db.data.blocks ??= [];
 db.data.announcements ??= [];
 db.data.stickerPacks ??= []; // 表情商店：{id, authorId, authorName, name, stickers[], downloads[], createdAt}
+db.data.polls ??= []; // 群投票：{id, conversationId, creatorId, question, options:[{id,text,votes[]}], multiple, closed, createdAt}
 for (const u of db.data.users) {
   u.phone ??= '';
   u.email ??= '';
   u.seenAnns ??= []; // 已读公告 id（每人每条只弹一次）
   u.leftConvs ??= []; // 退过的群 id（供清理本地幽灵群）
+  u.convPrefs ??= {}; // 会话偏好 { [convId]: {pinned, muted} }
 }
 
 export const newId = (prefix = '') => (prefix ? `${prefix}_` : '') + nanoid(12);

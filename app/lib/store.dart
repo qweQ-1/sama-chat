@@ -89,6 +89,9 @@ class AppState extends ChangeNotifier {
   bool announcementShown = false; // 弹窗防重入
   final Set<String> _ackedAnnIds = {};
 
+  /// 群投票（按会话缓存）。
+  final Map<String, List<Poll>> polls = {};
+
   /// 是否有发布公告权限（huzhi 账号，服务端下发）。
   bool canAnnounce = false;
 
@@ -419,6 +422,10 @@ class AppState extends ChangeNotifier {
     if (!notificationsEnabled) return;
     if (msg.senderId == me?.id) return;
     if (activeChatId == msg.conversationId && appInForeground) return;
+    // 免打扰的会话不弹通知
+    for (final c in conversations) {
+      if (c.id == msg.conversationId && c.muted) return;
+    }
     var title = msg.sender?.displayName ?? '新消息';
     for (final c in conversations) {
       if (c.id == msg.conversationId) {
@@ -428,7 +435,13 @@ class AppState extends ChangeNotifier {
     }
     final body = msg.isSticker
         ? '[表情]'
-        : (msg.isImage ? '[图片]' : (msg.isVideo ? '[视频]' : msg.content));
+        : (msg.isImage
+            ? '[图片]'
+            : (msg.isVideo
+                ? '[视频]'
+                : (msg.isVoice
+                    ? '[语音]'
+                    : (msg.isFile ? '[文件] ${msg.fileName}' : msg.content))));
     unawaited(AppNotifications.showMessage(
       title: title,
       body: body,
@@ -581,6 +594,53 @@ class AppState extends ChangeNotifier {
             notifyListeners();
           }
         }
+      case 'poll:new':
+      case 'poll:update':
+        if (data is Map && data['poll'] is Map) {
+          final p = Poll.fromJson((data['poll'] as Map).cast<String, dynamic>());
+          final list = polls[p.conversationId] ??= [];
+          final i = list.indexWhere((x) => x.id == p.id);
+          if (i >= 0) {
+            list[i] = p;
+          } else {
+            list.insert(0, p);
+          }
+          notifyListeners();
+        }
+      case 'group:mention':
+        if (data is Map) {
+          final convId = data['conversationId'] as String?;
+          final convName = data['conversationName'] as String? ?? '群聊';
+          final from = data['from'] is Map
+              ? User.fromJson((data['from'] as Map).cast<String, dynamic>())
+              : null;
+          if (convId != null && notificationsEnabled && activeChatId != convId) {
+            unawaited(AppNotifications.showMessage(
+              title: '$convName · ${from?.displayName ?? '有人'} @了你',
+              body: '${data['content'] ?? ''}',
+              id: convId.hashCode & 0x7fffffff,
+            ));
+          }
+        }
+      case 'moment:interaction':
+        if (data is Map && notificationsEnabled) {
+          final kind = data['kind'] as String? ?? '';
+          final from = data['from'] is Map
+              ? User.fromJson((data['from'] as Map).cast<String, dynamic>())
+              : null;
+          final who = from?.displayName ?? '有人';
+          final body = kind == 'like'
+              ? '$who 赞了你的动态'
+              : kind == 'comment'
+                  ? '$who 评论了你的动态：${data['text'] ?? ''}'
+                  : '$who 回复了你的评论：${data['text'] ?? ''}';
+          unawaited(AppNotifications.showMessage(
+            title: '炫圈互动',
+            body: body,
+            id: 900007,
+          ));
+          unawaited(refreshMoments());
+        }
       case 'moment:new':
         unawaited(refreshMoments());
       case 'moment:deleted':
@@ -635,8 +695,12 @@ class AppState extends ChangeNotifier {
   }
 
   void _sortConversations() {
-    conversations.sort((a, b) =>
-        (b.lastMessage?.createdAt ?? 0).compareTo(a.lastMessage?.createdAt ?? 0));
+    conversations.sort((a, b) {
+      // 置顶的排最前，再按最后消息时间
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+      return (b.lastMessage?.createdAt ?? 0)
+          .compareTo(a.lastMessage?.createdAt ?? 0);
+    });
   }
 
   /// 会话从我的列表里消失（退群 / 被解散）。
@@ -689,10 +753,44 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// 删除本地消息（仅自己界面隐藏；对方不受影响）。
+  final Map<String, Set<String>> _hiddenMsgs = {};
+
+  void deleteLocalMessage(String conversationId, String messageId) {
+    (_hiddenMsgs[conversationId] ??= {}).add(messageId);
+    chatMessages[conversationId]?.removeWhere((m) => m.id == messageId);
+    notifyListeners();
+  }
+
+  /// 转发消息到其它会话（保持原类型：图片/视频/文件/语音/表情用原 URL 直接引用）。
+  Future<Message> forwardMessage(String conversationId, Message src) async {
+    final msg = await api.sendMessage(
+      conversationId,
+      content: src.content,
+      type: src.type,
+      duration: src.isVoice ? src.duration : null,
+      fileName: src.fileName.isEmpty ? null : src.fileName,
+      fileSize: src.fileSize == 0 ? null : src.fileSize,
+    );
+    _appendMessage(msg);
+    return msg;
+  }
+
   Future<void> loadMessages(String conversationId) async {
     final list = await api.messages(conversationId);
-    chatMessages[conversationId] = list;
+    final hidden = _hiddenMsgs[conversationId] ?? const <String>{};
+    chatMessages[conversationId] =
+        hidden.isEmpty ? list : list.where((m) => !hidden.contains(m.id)).toList();
     notifyListeners();
+  }
+
+  /// 加载某会话的投票列表。
+  Future<void> loadPolls(String conversationId) async {
+    try {
+      final list = await api.polls(conversationId);
+      polls[conversationId] = list;
+      notifyListeners();
+    } catch (_) {}
   }
 
   Future<void> markConversationRead(String conversationId) async {
@@ -784,6 +882,82 @@ class AppState extends ChangeNotifier {
     final msg = await api.sendMessage(conversationId, content: url, type: 'sticker');
     _appendMessage(msg);
     return msg;
+  }
+
+  /// 发送语音消息（原始音频上传 → voice 类型 + 时长）。
+  Future<Message> sendVoice(String conversationId, Uint8List bytes, String ext, int duration) async {
+    final url = await api.uploadVideo(bytes, _normAudioExt(ext));
+    final msg = await api.sendMessage(
+      conversationId,
+      content: url,
+      type: 'voice',
+      duration: duration,
+    );
+    _appendMessage(msg);
+    return msg;
+  }
+
+  /// 发送文件消息（任意类型文件）。
+  Future<Message> sendFile(String conversationId, Uint8List bytes, String fileName) async {
+    final up = await api.uploadFile(bytes, fileName);
+    final msg = await api.sendMessage(
+      conversationId,
+      content: up.url,
+      type: 'file',
+      fileName: up.name.isEmpty ? fileName : up.name,
+      fileSize: up.size,
+    );
+    _appendMessage(msg);
+    return msg;
+  }
+
+  /// 回复某条消息（发送文字，带引用）。
+  Future<Message> sendReply(String conversationId, String text, Message target) async {
+    final meId = me?.id ?? '';
+    final temp = Message(
+      id: 'tmp_${DateTime.now().microsecondsSinceEpoch}',
+      conversationId: conversationId,
+      senderId: meId,
+      type: 'text',
+      content: text,
+      createdAt: serverNowMs(),
+      readBy: [meId],
+      sender: me,
+      pending: true,
+      replyToId: target.id,
+      replyPreview: _replyPreviewOf(target),
+    );
+    _appendMessage(temp);
+    try {
+      final msg = await api.sendMessage(
+        conversationId,
+        content: text,
+        replyToId: target.id,
+      );
+      _replaceLocal(temp.id, msg);
+      return msg;
+    } catch (_) {
+      _markFailed(temp.id);
+      rethrow;
+    }
+  }
+
+  String _replyPreviewOf(Message m) {
+    final who = m.sender?.displayName ?? '';
+    final body = m.recalled
+        ? '[已撤回]'
+        : (m.isSticker
+            ? '[表情]'
+            : m.isImage
+                ? '[图片]'
+                : m.isVideo
+                    ? '[视频]'
+                    : m.isVoice
+                        ? '[语音]'
+                        : m.isFile
+                            ? '[文件]'
+                            : m.content);
+    return '${who.isEmpty ? '' : '$who: '}$body';
   }
 
   void sendTyping(String conversationId, bool typing) {
@@ -886,5 +1060,31 @@ class AppState extends ChangeNotifier {
     final e = ext.toLowerCase().replaceAll('.', '');
     const allowed = {'mp4', 'mov', 'm4v', 'webm'};
     return allowed.contains(e) ? e : 'mp4';
+  }
+
+  String _normAudioExt(String ext) {
+    final e = ext.toLowerCase().replaceAll('.', '');
+    const allowed = {'m4a', 'aac', 'mp3', 'wav'};
+    return allowed.contains(e) ? e : 'm4a';
+  }
+
+  /// 置顶 / 免打扰（乐观更新，服务端确认后校正）。
+  Future<void> setConvPrefs(String conversationId, {bool? pinned, bool? muted}) async {
+    final idx = conversations.indexWhere((c) => c.id == conversationId);
+    if (idx >= 0) {
+      conversations[idx] = conversations[idx].copyWith(pinned: pinned, muted: muted);
+      _sortConversations();
+      notifyListeners();
+    }
+    try {
+      final res = await api.setConvPrefs(conversationId, pinned: pinned, muted: muted);
+      final i2 = conversations.indexWhere((c) => c.id == conversationId);
+      if (i2 >= 0) {
+        conversations[i2] =
+            conversations[i2].copyWith(pinned: res.pinned, muted: res.muted);
+        _sortConversations();
+        notifyListeners();
+      }
+    } catch (_) {/* 离线时保留乐观值 */}
   }
 }

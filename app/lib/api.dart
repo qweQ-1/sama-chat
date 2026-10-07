@@ -347,9 +347,24 @@ class Api {
         .toList();
   }
 
-  Future<Message> sendMessage(String conversationId, {String? text, String? content, String type = 'text'}) async {
-    final j = await _req('POST', '/conversations/$conversationId/messages',
-        body: {'content': content ?? text ?? '', 'type': type});
+  Future<Message> sendMessage(
+    String conversationId, {
+    String? text,
+    String? content,
+    String type = 'text',
+    int? duration,
+    String? fileName,
+    int? fileSize,
+    String? replyToId,
+  }) async {
+    final j = await _req('POST', '/conversations/$conversationId/messages', body: {
+      'content': content ?? text ?? '',
+      'type': type,
+      if (duration != null) 'duration': duration,
+      if (fileName != null) 'fileName': fileName,
+      if (fileSize != null) 'fileSize': fileSize,
+      if (replyToId != null && replyToId.isNotEmpty) 'replyToId': replyToId,
+    });
     return Message.fromJson((j['message'] as Map).cast<String, dynamic>());
   }
 
@@ -357,8 +372,96 @@ class Api {
     await _req('POST', '/conversations/$conversationId/messages/$messageId/recall');
   }
 
+  // ---------- 搜索 ----------
+  Future<List<SearchHit>> search(String q) async {
+    final j = await _req('GET', '/search?q=${Uri.encodeQueryComponent(q)}');
+    return ((j['results'] as List?) ?? const [])
+        .map((e) => SearchHit.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  // ---------- 会话偏好（置顶 / 免打扰）----------
+  Future<({bool pinned, bool muted})> setConvPrefs(
+    String conversationId, {
+    bool? pinned,
+    bool? muted,
+  }) async {
+    final j = await _req('POST', '/conversations/$conversationId/prefs', body: {
+      if (pinned != null) 'pinned': pinned,
+      if (muted != null) 'muted': muted,
+    });
+    return (
+      pinned: j['pinned'] as bool? ?? false,
+      muted: j['muted'] as bool? ?? false,
+    );
+  }
+
+  // ---------- 文件上传（任意类型）----------
+  Future<({String url, String name, int size})> uploadFile(
+    Uint8List bytes,
+    String fileName,
+  ) async {
+    final ext = fileName.contains('.')
+        ? fileName.split('.').last.replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
+        : '';
+    final uri = Uri.parse(
+        '$base/upload/file?ext=$ext&name=${Uri.encodeQueryComponent(fileName)}');
+    late http.Response res;
+    try {
+      res = await _client.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'ngrok-skip-browser-warning': '1',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: bytes,
+      ).timeout(const Duration(seconds: 300));
+    } catch (e) {
+      throw ApiException(0, '文件上传失败，请检查网络');
+    }
+    if (res.statusCode != 200) {
+      Map<String, dynamic> j0 = {};
+      try {
+        j0 = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      } catch (_) {}
+      throw ApiException(
+          res.statusCode, j0['message'] as String? ?? '文件上传失败 (${res.statusCode})');
+    }
+    final j = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    return (
+      url: j['url'] as String,
+      name: j['name'] as String? ?? fileName,
+      size: (j['size'] as num?)?.toInt() ?? bytes.length,
+    );
+  }
+
   Future<void> markRead(String conversationId) async {
     await _req('POST', '/conversations/$conversationId/read');
+  }
+
+  // ---------- 群投票 ----------
+  Future<Poll> createPoll(String conversationId, String question, List<String> options) async {
+    final j = await _req('POST', '/conversations/$conversationId/polls',
+        body: {'question': question, 'options': options});
+    return Poll.fromJson((j['poll'] as Map).cast<String, dynamic>());
+  }
+
+  Future<List<Poll>> polls(String conversationId) async {
+    final j = await _req('GET', '/conversations/$conversationId/polls');
+    return ((j['polls'] as List?) ?? const [])
+        .map((e) => Poll.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  Future<Poll> votePoll(String pollId, List<String> optionIds) async {
+    final j = await _req('POST', '/polls/$pollId/vote', body: {'optionIds': optionIds});
+    return Poll.fromJson((j['poll'] as Map).cast<String, dynamic>());
+  }
+
+  Future<Poll> closePoll(String pollId) async {
+    final j = await _req('POST', '/polls/$pollId/close');
+    return Poll.fromJson((j['poll'] as Map).cast<String, dynamic>());
   }
 
   // ---------- moments ----------

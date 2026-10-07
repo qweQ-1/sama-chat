@@ -30,7 +30,10 @@ export const UPLOAD_DIR =
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const ALLOWED_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
-const ALLOWED_VIDEO_EXT = new Set(['mp4', 'mov', 'm4v', 'webm']);
+const ALLOWED_VIDEO_EXT = new Set([
+  'mp4', 'mov', 'm4v', 'webm', // 视频
+  'm4a', 'aac', 'mp3', 'wav', 'ogg', 'opus', // 音频（语音消息）
+]);
 const MIME = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -50,7 +53,7 @@ const MAX_UPLOAD_BYTES = 6 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 48 * 1024 * 1024;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MEDIA_NAME_RE =
-  /^(?:(img|vid)_[A-Za-z0-9_-]{6,48}\.(jpg|jpeg|png|gif|webp|mp4|mov|m4v|webm)|f_[A-Za-z0-9_-]{6,48}(\.[A-Za-z0-9]{1,10})?)$/;
+  /^(?:(img|vid)_[A-Za-z0-9_-]{6,48}\.(jpg|jpeg|png|gif|webp|mp4|mov|m4v|webm|m4a|aac|mp3|wav|ogg|opus)|f_[A-Za-z0-9_-]{6,48}(\.[A-Za-z0-9]{1,10})?)$/;
 
 export function registerApiRoutes(app, io) {
   // ---------- uploads ----------
@@ -114,7 +117,7 @@ export function registerApiRoutes(app, io) {
         .toLowerCase()
         .replace(/^\./, '');
       if (!ALLOWED_VIDEO_EXT.has(ext)) {
-        return reply.code(400).send({ error: 'bad_ext', message: '不支持的视频格式' });
+        return reply.code(400).send({ error: 'bad_ext', message: '不支持的音视频格式' });
       }
       const buf = req.body;
       if (!Buffer.isBuffer(buf) || buf.length === 0) {

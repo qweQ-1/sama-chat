@@ -570,8 +570,22 @@ console.log('\n== 21. 语音/文件消息 + 回复 + @提及 ==');
 const privList = await api('GET', '/conversations', { token: A });
 const priv = privList.json.conversations.find((c) => c.type === 'private');
 const privId2 = priv.id;
+// 真实语音上传：raw binary m4a（修复"不支持的视频格式"回归）
+const fakeVoiceMp4 = Buffer.concat([
+  Buffer.from('00000020667479706d703432', 'hex'),
+  Buffer.alloc(1024, 5),
+]);
+const upVoice = await rawPost('/upload/video?ext=m4a', { Authorization: `Bearer ${A}`, 'Content-Type': 'application/octet-stream' }, fakeVoiceMp4);
+let upVoiceJson = null;
+try { upVoiceJson = JSON.parse(upVoice.body); } catch {}
+ok('m4a 语音上传成功(不再报格式错)', upVoice.status === 200 && upVoiceJson?.size === fakeVoiceMp4.length && /\/uploads\/vid_.*\.m4a$/.test(upVoiceJson?.url ?? ''), upVoice.body);
+const voiceStream = await fetch(`${BASE}${upVoiceJson?.url}`);
+ok('语音可播放(Content-Type audio)', voiceStream.status === 200 && String(voiceStream.headers.get('content-type') ?? '').startsWith('audio/'));
+await voiceStream.arrayBuffer();
+const voiceRange = await fetch(`${BASE}${upVoiceJson?.url}`, { headers: { Range: 'bytes=0-3' } });
+ok('语音支持 Range 请求', voiceRange.status === 206);
 const voiceMsg = await api('POST', `/conversations/${privId2}/messages`, {
-  token: A, body: { content: '/uploads/$(echo f_fake).m4a', type: 'voice', duration: 8 },
+  token: A, body: { content: upVoiceJson?.url, type: 'voice', duration: 8 },
 });
 ok('发送语音消息(type=voice,duration=8)',
   voiceMsg.status === 200 && voiceMsg.json?.message?.type === 'voice' && voiceMsg.json?.message?.duration === 8);

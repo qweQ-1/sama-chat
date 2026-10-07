@@ -32,7 +32,7 @@ dependencies:
   video_player_win: ^3.3.0 # Windows 桌面版视频播放（其他平台自动跳过）
   local_notifier: ^0.1.6 # Windows / macOS / Linux 桌面系统通知
   record: ^6.1.2 # 语音消息录音（按住说话）
-  file_picker: ^8.3.7 # 文件消息选择（经典稳定 API）
+  file_selector: ^1.0.3 # 文件消息选择（Flutter 官方插件，全平台）
 
 dev_dependencies:
   flutter_test:

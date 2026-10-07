@@ -16,6 +16,7 @@ KS_PASS = 'samachat123'
 KS_ALIAS = 'sama-chat'
 
 
+
 def patch_kts(path):
     s = open(path).read()
     changed = False

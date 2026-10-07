@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart' show openFile, XFile;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:open_filex/open_filex.dart';
@@ -484,15 +484,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendFile() async {
     final s = context.read<AppState>();
     try {
-      final res = await FilePicker.platform.pickFiles(withData: true);
-      if (res == null || res.files.isEmpty) return;
-      final f = res.files.first;
-      final bytes = f.bytes ??
-          (f.path != null ? await File(f.path!).readAsBytes() : null);
-      if (bytes == null) {
-        if (mounted) showError(context, '读取文件失败');
-        return;
-      }
+      final XFile? f = await openFile();
+      if (f == null) return;
+      final bytes = await f.readAsBytes();
       if (bytes.length > 25 * 1024 * 1024) {
         if (mounted) showError(context, '文件过大（限 25MB）');
         return;

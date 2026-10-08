@@ -361,15 +361,16 @@ class _ComposeMomentScreenState extends State<ComposeMomentScreen> {
   Future<void> _pick() async {
     if (_images.length >= 9) return;
     final picker = ImagePicker();
-    final files = await picker.pickMultiImage(
-      maxWidth: 1600,
-      imageQuality: 82,
-    );
+    // 不能传 maxWidth/imageQuality：会把 GIF 重编码成静图
+    final files = await picker.pickMultiImage();
     for (final f in files) {
       if (_images.length >= 9) break;
       final raw = await f.readAsBytes();
-      final ext0 = f.name.contains('.') ? f.name.split('.').last : 'jpg';
-      final img = await compressImage(raw, fallbackExt: ext0);
+      final ext0 = f.name.contains('.') ? f.name.split('.').last.toLowerCase() : 'jpg';
+      final img = isAnimatedGif(raw, ext0)
+          ? (bytes: raw, ext: 'gif')
+          : await compressImage(raw, fallbackExt: ext0);
+      if (img.bytes.length > kMaxUploadBytes) continue; // 超限的跳过
       setState(() => _images.add((bytes: img.bytes, ext: img.ext)));
     }
   }

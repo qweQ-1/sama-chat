@@ -98,16 +98,13 @@ class _StickerPanelState extends State<StickerPanel> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _importing = true);
     try {
-      final x = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1080,
-        maxHeight: 1080,
-      );
+      // 注意：不能传 maxWidth/maxHeight，否则 GIF 会被缩放成静图
+      final x = await ImagePicker().pickImage(source: ImageSource.gallery);
       if (x == null) return;
       final raw = await x.readAsBytes();
-      final ext0 = x.name.contains('.') ? x.name.split('.').last : 'png';
-      // GIF 动图保持原样（压缩会丢动画）；其余压成小图。
-      final small = ext0.toLowerCase() == 'gif'
+      final ext0 = x.name.contains('.') ? x.name.split('.').last.toLowerCase() : 'png';
+      // GIF 动图保持原样（缩放会丢动画）；其余压成小图。
+      final small = isAnimatedGif(raw, ext0)
           ? (bytes: raw, ext: 'gif')
           : await makeSticker(raw, fallbackExt: ext0);
       await StickerStore.add(small.bytes, small.ext);

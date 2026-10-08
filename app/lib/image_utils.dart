@@ -12,6 +12,26 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 /// 压缩结果：压缩后的字节 + 对应扩展名。
 typedef CompressedImage = ({Uint8List bytes, String ext});
 
+/// 是否为 GIF 字节流：看 magic bytes（GIF87a / GIF89a）。
+/// 相册里有些文件后缀不全，字节头最可靠。
+bool isGifBytes(Uint8List bytes) {
+  if (bytes.length < 6) return false;
+  return bytes[0] == 0x47 && // G
+      bytes[1] == 0x49 && // I
+      bytes[2] == 0x46 && // F
+      bytes[3] == 0x38 && // 8
+      (bytes[4] == 0x37 || bytes[4] == 0x39) && // 7 / 9
+      bytes[5] == 0x61; // a
+}
+
+/// 综合判断是否为 GIF 动图（字节头 or 扩展名）。
+/// ⚠️ 动图不能被压缩/缩放，否则会变成静态图（动画丢失）。
+bool isAnimatedGif(Uint8List bytes, String ext) =>
+    isGifBytes(bytes) || ext.toLowerCase() == 'gif';
+
+/// 上传体积上限（与服务端一致：图片 6MB）。
+const int kMaxUploadBytes = 6 * 1024 * 1024;
+
 /// 上传前压缩：长边封顶 [maxDim]（默认 1280），质量 [quality]（默认 78）。
 /// 优先 WebP；凡是失败都会逐级回退（WebP → JPEG → 原图），不影响发送。
 Future<CompressedImage> compressImage(

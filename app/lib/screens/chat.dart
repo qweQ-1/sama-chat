@@ -382,16 +382,20 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendImage() async {
     final s = context.read<AppState>();
     try {
-      final x = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1600,
-        imageQuality: 82,
-      );
+      // 注意：不能传 maxWidth/imageQuality，否则 image_picker 会把 GIF 重编码成静图
+      final x = await _picker.pickImage(source: ImageSource.gallery);
       if (x == null) return;
       setState(() => _sendingMedia = true);
       final raw = await x.readAsBytes();
-      final ext0 = x.name.contains('.') ? x.name.split('.').last : 'jpg';
-      final img = await compressImage(raw, fallbackExt: ext0);
+      final ext0 = x.name.contains('.') ? x.name.split('.').last.toLowerCase() : 'jpg';
+      // GIF 动图必须原样上传：压缩或缩放都会把动画变成静态图
+      final img = isAnimatedGif(raw, ext0)
+          ? (bytes: raw, ext: 'gif')
+          : await compressImage(raw, fallbackExt: ext0);
+      if (img.bytes.length > kMaxUploadBytes) {
+        if (mounted) showError(context, '图片太大了（限 6MB），GIF 动图请选小一点的');
+        return;
+      }
       await s.sendImage(convId, img.bytes, img.ext);
     } on ApiException catch (e) {
       if (mounted) showError(context, e.message);

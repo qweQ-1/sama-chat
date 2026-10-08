@@ -47,16 +47,19 @@ fi
 node -v && echo "✓ $(node -v)"
 
 echo "──── 2/9 部署代码 ────"
-curl -sL --max-time 90 "https://codeload.github.com/qweQ-1/sama-chat/tar.gz/refs/heads/main" -o /tmp/sama.tgz
+curl -sL --max-time 90 "https://codeload.github.com/qweQ-1/sama-chat/tar.gz/refs/heads/main" -o /tmp/sama.tgz \
+  || { echo "❌ 代码下载失败，检查服务器网络"; exit 1; }
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR"
-tar xzf /tmp/sama.tgz --strip-components=1 -C "$APP_DIR"
+tar xzf /tmp/sama.tgz --strip-components=1 -C "$APP_DIR" \
+  || { echo "❌ 解压失败，/tmp/sama.tgz 可能不完整"; exit 1; }
 cd "$APP_DIR/server"
 
 echo "──── 3/9 创建独立运行用户（不用 root 跑服务）────"
 id -u "$SVC_USER" >/dev/null 2>&1 || useradd -r -d "$APP_DIR" -s /usr/sbin/nologin "$SVC_USER"
 chown -R "$SVC_USER:$SVC_USER" "$APP_DIR"
-su -s /bin/bash "$SVC_USER" -c "cd $APP_DIR/server && npm ci --omit=dev 2>/dev/null || npm install --omit=dev"
+su -s /bin/bash "$SVC_USER" -c "cd $APP_DIR/server && npm ci --omit=dev 2>/dev/null || npm install --omit=dev" \
+  || { echo "❌ 依赖安装失败（检查网络/磁盘）"; exit 1; }
 echo "✓ 依赖安装完成"
 
 echo "──── 4/9 写配置 ────"
@@ -84,12 +87,27 @@ else
 fi
 
 echo "──── 5/9 迁移数据 ────"
-mkdir -p "$APP_DIR/server/data"
+mkdir -p "$APP_DIR/server/data" "$APP_DIR/server/uploads"
 if [[ -n "$DATA" && -d "$DATA" ]]; then
-  [[ -f "$DATA/db.json" ]]  && cp "$DATA/db.json"  "$APP_DIR/server/data/db.json"  && echo "✓ db.json（账号/消息/好友）"
-  [[ -d "$DATA/uploads" ]] && cp -r "$DATA/uploads" "$APP_DIR/server/uploads"     && echo "✓ uploads/（历史图片/文件）"
+  if [[ -f "$DATA/db.json" ]]; then
+    cp "$DATA/db.json" "$APP_DIR/server/data/db.json"
+    echo "✓ db.json（账号/消息/好友/投票）"
+  else
+    echo "⚠️ $DATA 下没找到 db.json"
+  fi
+  # uploads 可能在 data 里面，也可能是同级目录（看旧服务器当初怎么起的）
+  UP_SRC=""
+  [[ -d "$DATA/uploads" ]] && UP_SRC="$DATA/uploads"
+  [[ -z "$UP_SRC" && -d "$(dirname "$DATA")/uploads" ]] && UP_SRC="$(dirname "$DATA")/uploads"
+  if [[ -n "$UP_SRC" ]]; then
+    cp -r "$UP_SRC/." "$APP_DIR/server/uploads/"
+    N=$(find "$APP_DIR/server/uploads" -type f | wc -l)
+    echo "✓ uploads/：$N 个历史文件（图片/视频/语音）← $UP_SRC"
+  else
+    echo "⚠️ 没找到 uploads/ —— 历史图片会变裂图！检查传输路径"
+  fi
 else
-  echo "⚠️ 未提供数据目录 —— 全新数据库，所有人重新注册"
+  echo "⚠️ 未提供数据目录 —— 全新数据库，所有人需要重新注册"
 fi
 chown -R "$SVC_USER:$SVC_USER" "$APP_DIR/server/data" "$APP_DIR/server/uploads"
 
@@ -127,7 +145,7 @@ if command -v ufw >/dev/null; then
     ufw allow $PORT/tcp >/dev/null
   fi
   ufw --force enable >/dev/null
-  echo "✓ $(ufw status | grep -c ALLOW) 条放行规则生效"
+  echo "✓ 防火墙规则：$(ufw status | grep -c ALLOW || true) 条放行"
 else
   echo "⚠️ 无 ufw，请去云控制台放行对应端口"
 fi
@@ -142,6 +160,7 @@ tar czf "\$K/uploads_\$ts.tgz" -C "$APP_DIR/server" uploads
 ls -t "\$K" | tail -n +31 | xargs -r -I{} rm -f "\$K/{}"
 EOF
 chmod +x "$APP_DIR/backup.sh"
+apt-get install -y cron >/dev/null 2>&1 || true
 (crontab -l 2>/dev/null; echo "30 3 * * * $APP_DIR/backup.sh") | sort -u | crontab -
 echo "✓ 每日 3:30 备份到 $APP_DIR/backups"
 
@@ -172,7 +191,11 @@ server {
 EOF
   rm -f /etc/nginx/sites-enabled/default
   ln -sf /etc/nginx/sites-available/sama-chat /etc/nginx/sites-enabled/
-  nginx -t 2>/dev/null && systemctl reload nginx && echo "✓ nginx 已反代到 127.0.0.1:$PORT"
+  if nginx -t 2>/dev/null; then
+    systemctl reload nginx && echo "✓ nginx 已反代到 127.0.0.1:$PORT"
+  else
+    echo "⚠️ nginx 配置测试失败，手动看：nginx -t"
+  fi
 fi
 
 # ---------------- 自检 + 输出 ----------------

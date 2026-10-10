@@ -84,6 +84,11 @@ nginx -t && systemctl reload nginx
 echo "✓ 双入口生效：域名(待HTTPS) + IP(原样)"
 
 echo "──── 3/4 申请 Let's Encrypt 证书（免费，90天自动续期）────"
+# 先放行系统层 443（AWS Lightsail 控制台那层需手动加，双层防火墙都开才能通）
+if command -v ufw >/dev/null; then
+  ufw allow 443/tcp >/dev/null 2>&1 || true
+  echo "✓ ufw 已放行 443"
+fi
 apt-get update -qq >/dev/null 2>&1 || true
 apt-get install -y certbot python3-certbot-nginx >/dev/null
 certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email

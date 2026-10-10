@@ -42,9 +42,7 @@ jobs:
       - name: Build release APK
         run: |
           cd app
-          SERVER="${{ vars.SAMA_SERVER }}"
-          SERVER="${SERVER:-https://refrain-tapping-crazy.ngrok-free.dev}"
-          flutter build apk --release --dart-define=SAMA_SERVER=$SERVER
+          flutter build apk --release
 
       - name: Verify APK signing certificate
         run: |
@@ -83,9 +81,7 @@ jobs:
       - name: Build iOS (no codesign)
         run: |
           cd app
-          SERVER="${{ vars.SAMA_SERVER }}"
-          SERVER="${SERVER:-https://refrain-tapping-crazy.ngrok-free.dev}"
-          flutter build ios --release --no-codesign --dart-define=SAMA_SERVER=$SERVER
+          flutter build ios --release --no-codesign
 
       - name: Package IPA
         run: bash ci/package-ipa.sh
@@ -124,9 +120,7 @@ jobs:
         shell: bash
         run: |
           cd app
-          SERVER="${{ vars.SAMA_SERVER }}"
-          SERVER="${SERVER:-https://refrain-tapping-crazy.ngrok-free.dev}"
-          flutter build windows --release --dart-define=SAMA_SERVER=$SERVER
+          flutter build windows --release
 
       - name: Install Inno Setup
         shell: pwsh

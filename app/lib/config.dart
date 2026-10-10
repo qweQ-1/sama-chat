@@ -9,7 +9,7 @@ class AppConfig {
   /// 也可在 App 内「我 → 服务器设置」随时修改。
   static const String defaultServer = String.fromEnvironment(
     'SAMA_SERVER',
-    defaultValue: 'https://refrain-tapping-crazy.ngrok-free.dev',
+    defaultValue: 'https://samachat.de5.net',
   );
 
   static const String appName = '萨摩聊天';

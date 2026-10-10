@@ -7,6 +7,16 @@
 > 💡 已经在用的用户不受影响：你手动改过地址的继续用，无需更新。
 > 本次仅改默认配置，无其他功能变化。
 
+## 🖥️ Windows 启动报「找不到 MF.dll」？
+
+这是 Windows 缺了媒体组件（N 版系统 / 精简版系统常见），不是软件坏了。用**管理员 PowerShell** 跑：
+
+```powershell
+DISM /Online /Add-Capability:Media.MediaFeaturePack~~~~0.0.1.0
+```
+
+跑完重启电脑即可。
+
 ---
 
 # 萨摩聊天 v2.2.1

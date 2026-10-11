@@ -33,6 +33,9 @@ jobs:
       - name: Get dependencies
         run: cd app && flutter pub get
 
+      - name: Patch plugin compileSdk
+        run: python3 ci/patch-plugin-sdk.py
+
       - name: Analyze (non-blocking)
         run: cd app && flutter analyze || true
 

@@ -12,9 +12,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
-// tray_manager 0.8 的稳定 API 位于 legacy.dart（主入口已切到新 nativeapi）
-// ignore: deprecated_member_use
-import 'package:tray_manager/legacy.dart';
+import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'store.dart';
@@ -43,11 +41,11 @@ class TraySupport with TrayListener, WindowListener {
     // 图标：asset → 临时文件（托盘需要文件路径）
     try {
       final dir = await getTemporaryDirectory();
-      _normalIcon = '${dir.path}/sama_tray.png';
-      _alertIcon = '${dir.path}/sama_tray_alert.png';
-      final n = await rootBundle.load('assets/tray/tray.png');
+      _normalIcon = '${dir.path}/sama_tray.ico';
+      _alertIcon = '${dir.path}/sama_tray_alert.ico';
+      final n = await rootBundle.load('assets/tray/tray.ico');
       await File(_normalIcon!).writeAsBytes(n.buffer.asUint8List());
-      final a = await rootBundle.load('assets/tray/tray_alert.png');
+      final a = await rootBundle.load('assets/tray/tray_alert.ico');
       await File(_alertIcon!).writeAsBytes(a.buffer.asUint8List());
     } catch (_) {
       return; // 图标失败不影响 App

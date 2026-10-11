@@ -35,7 +35,7 @@ dependencies:
   file_selector: ^1.0.3 # 文件消息选择（Flutter 官方插件，全平台）
   flutter_webrtc: ^0.12.7 # 语音/视频通话（WebRTC）
   share_plus: ^13.3.1 # 聊天记录导出分享（移动端）
-  tray_manager: ^0.8.0 # Windows 托盘常驻
+  tray_manager: ^0.5.3 # Windows 托盘常驻（0.6+ 架构带 GTK native assets，暂不升级）
   window_manager: ^0.5.2 # 最小化/关闭拦截（Windows 托盘配套）
 
 dev_dependencies:
@@ -47,5 +47,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/silence.wav
-    - assets/tray/tray.png
-    - assets/tray/tray_alert.png
+    - assets/tray/tray.ico
+    - assets/tray/tray_alert.ico

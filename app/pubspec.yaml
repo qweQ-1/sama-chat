@@ -34,7 +34,6 @@ dependencies:
   record: ^6.1.2 # 语音消息录音（按住说话）
   file_selector: ^1.0.3 # 文件消息选择（Flutter 官方插件，全平台）
   flutter_webrtc: ^0.12.7 # 语音/视频通话（WebRTC）
-  permission_handler: ^11.3.1 # Android 运行时权限（麦克风）
 
 dev_dependencies:
   flutter_test:

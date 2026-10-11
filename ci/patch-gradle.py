@@ -21,6 +21,15 @@ def patch_kts(path):
     s = open(path).read()
     changed = False
 
+    # flutter_webrtc 拉入的 androidx 库要求 compileSdk 35
+    if 'compileSdk = ' in s:
+        import re
+        s2 = re.sub(r'compileSdk = flutter\.compileSdkVersion', 'compileSdk = 35', s)
+        s2 = re.sub(r'compileSdk = \d+', 'compileSdk = 35', s2)
+        if s2 != s:
+            s = s2
+            changed = True
+
     # flutter_webrtc 要求 minSdk >= 23
     if 'minSdk = ' in s and 'minSdk = 23' not in s:
         import re
@@ -84,6 +93,15 @@ def patch_kts(path):
 def patch_groovy(path):
     s = open(path).read()
     changed = False
+
+    # flutter_webrtc 拉入的 androidx 库要求 compileSdk 35
+    if 'compileSdkVersion' in s:
+        import re
+        s2 = re.sub(r'compileSdkVersion flutter\.compileSdkVersion', 'compileSdkVersion 35', s)
+        s2 = re.sub(r'compileSdkVersion \d+', 'compileSdkVersion 35', s2)
+        if s2 != s:
+            s = s2
+            changed = True
 
     # flutter_webrtc 要求 minSdk >= 23
     if 'minSdkVersion' in s and 'minSdkVersion 23' not in s:

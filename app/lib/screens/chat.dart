@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 
 import '../api.dart';
+import '../config.dart';
 import '../image_utils.dart';
 import '../models.dart';
 import '../store.dart';
@@ -618,7 +619,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
-          if (!widget.conversation.isGroup)
+          // Windows 桌面版无 WebRTC 原生支持，不显示通话入口
+          if (!widget.conversation.isGroup && !isDesktopPlatform)
             IconButton(
               tooltip: '语音通话',
               icon: const Icon(Icons.call_outlined),

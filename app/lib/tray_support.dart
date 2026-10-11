@@ -4,6 +4,7 @@
 /// - 有新消息 → 图标闪动 + 红点徽章 + tooltip 未读数
 ///
 /// 仅在桌面平台启用（移动端此文件逻辑不执行）。
+// ignore_for_file: deprecated_member_use
 library;
 
 import 'dart:async';
@@ -11,7 +12,9 @@ import 'dart:io';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
-import 'package:tray_manager/tray_manager.dart';
+// tray_manager 0.8 的稳定 API 位于 legacy.dart（主入口已切到新 nativeapi）
+// ignore: deprecated_member_use
+import 'package:tray_manager/legacy.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'store.dart';

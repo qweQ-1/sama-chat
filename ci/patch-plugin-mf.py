@@ -37,10 +37,11 @@ for host in glob.glob(os.path.join(PKG_CACHE, '*')):
         cmake = os.path.join(pkg, 'windows', 'CMakeLists.txt')
         if not os.path.isfile(cmake):
             continue
-        s = open(cmake).read()
+        s = open(cmake, 'r', encoding='utf-8').read()
         if MARK in s:
             continue
-        open(cmake, 'a').write(PATCH)
+        with open(cmake, 'a', encoding='utf-8') as f:
+            f.write(PATCH)
         patched.append(cmake)
 
 if patched:

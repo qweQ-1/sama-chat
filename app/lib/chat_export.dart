@@ -47,10 +47,10 @@ Future<File> exportChatHistory(AppState s, Conversation conv) async {
   }
 
   // 移动端：系统分享面板（用户可存到文件 App / 发给自己备份）
-  await Share.shareXFiles(
-    [XFile(tmpFile.path, mimeType: 'text/html')],
+  await SharePlus.instance.share(ShareParams(
     subject: '${conv.name} 聊天记录',
-  );
+    files: [XFile(tmpFile.path, mimeType: 'text/html')],
+  ));
   return tmpFile;
 }
 

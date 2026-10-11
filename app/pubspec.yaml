@@ -34,7 +34,7 @@ dependencies:
   record: ^6.1.2 # 语音消息录音（按住说话）
   file_selector: ^1.0.3 # 文件消息选择（Flutter 官方插件，全平台）
   flutter_webrtc: ^0.12.7 # 语音/视频通话（WebRTC）
-  share_plus: ^7.2.2 # 聊天记录导出分享（移动端）
+  share_plus: ^13.3.1 # 聊天记录导出分享（移动端）
   tray_manager: ^0.8.0 # Windows 托盘常驻
   window_manager: ^0.5.2 # 最小化/关闭拦截（Windows 托盘配套）
 

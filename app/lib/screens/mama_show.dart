@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../config.dart';
 import '../models.dart';
+import '../photo_to_mama.dart';
 import '../store.dart';
 import '../widgets.dart';
 
@@ -42,6 +45,53 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
       if (mounted) showError(context, '保存失败：$e');
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// 从照片一键生成（端侧分析，不上传照片）。
+  Future<void> _fromPhoto() async {
+    try {
+      final picker = ImagePicker();
+      final x = await picker.pickImage(source: ImageSource.gallery);
+      if (x == null || !mounted) return;
+
+      // 分析中提示
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(strokeWidth: 2.5),
+              SizedBox(width: 16),
+              Expanded(child: Text('正在分析照片…')),
+            ],
+          ),
+        ),
+      );
+
+      try {
+        final cfg = await generateMamaFromPhoto(x.path);
+        if (!mounted) return;
+        Navigator.pop(context); // 关分析框
+        setState(() => _c = cfg);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✨ 已根据照片生成，可以继续微调哦'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } on MamaPhotoException catch (e) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        showError(context, e.message);
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        showError(context, '分析失败：$e');
+      }
+    } catch (e) {
+      if (mounted) showError(context, '选照片失败：$e');
     }
   }
 
@@ -86,6 +136,27 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
             child: Text('捏一个你的专属形象',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
           ),
+          // 从照片生成（仅移动端：桌面没有 ML Kit）
+          if (!isDesktopPlatform) ...[
+            const SizedBox(height: 12),
+            Center(
+              child: FilledButton.icon(
+                onPressed: _fromPhoto,
+                icon: const Icon(Icons.auto_awesome, size: 18),
+                label: const Text('从照片生成'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF5B5BD6),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 22, vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Center(
+              child: Text('照片只在手机上分析，不会上传',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            ),
+          ],
           const SizedBox(height: 16),
 
           _label('肤色'),

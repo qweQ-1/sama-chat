@@ -6,7 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart' show WebRTC;
+import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
@@ -615,7 +615,7 @@ class AppState extends ChangeNotifier {
   Future<void> _ensureMicPermission() async {
     // Android 需要显式申请（6.0+ 运行时权限）；iOS/桌面由系统在 getUserMedia 时处理。
     if (!Platform.isAndroid) return;
-    final ok = await WebRTC().requestMicrophonePermission();
+    final ok = await Helper.requestCapturePermission();
     if (!ok) throw Exception('麦克风权限被拒绝');
   }
 

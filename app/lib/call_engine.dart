@@ -91,7 +91,7 @@ class CallEngine {
     _pendingCandidates.clear();
     for (final c in pending) {
       try {
-        await _pc?.addIceCandidate(c);
+        await _pc?.addCandidate(c);
       } catch (_) {}
     }
   }
@@ -109,7 +109,7 @@ class CallEngine {
       return;
     }
     try {
-      await _pc!.addIceCandidate(c);
+      await _pc!.addCandidate(c);
     } catch (_) {}
   }
 

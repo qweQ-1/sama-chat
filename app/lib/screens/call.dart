@@ -63,7 +63,7 @@ class _CallScreenState extends State<CallScreen> {
                     fontSize: 24,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 10),
-            Text(c.status == 'incoming' ? '$statusText' : statusText,
+            Text(statusText,
                 style: TextStyle(
                     color: c.status == 'connected'
                         ? Colors.greenAccent

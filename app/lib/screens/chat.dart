@@ -313,7 +313,12 @@ class _ChatScreenState extends State<ChatScreen> {
               for (final m in members)
                 if (m.user.id != meId)
                   ListTile(
-                    leading: Avatar(name: m.user.displayName, url: m.user.avatar, size: 38),
+                    leading: (m.user.mamaShow != null)
+                        ? MamaAvatar(config: m.user.mamaShow!, size: 38)
+                        : Avatar(
+                            name: m.user.displayName,
+                            url: m.user.avatar,
+                            size: 38),
                     title: Text(m.user.displayName),
                     subtitle: m.isOwner
                         ? const Text('群主', style: TextStyle(fontSize: 11))
@@ -1222,7 +1227,7 @@ class _Bubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (!isMine && isGroup) ...[
-                Avatar(name: senderName, url: message.sender?.avatar, size: 34),
+                _msgAvatar(context, message, senderName),
                 const SizedBox(width: 8),
               ],
               Flexible(
@@ -1402,6 +1407,15 @@ class _Bubble extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 消息头像：对方设置了 mama秀 就显示虚拟形象（优先好友列表里的最新数据）。
+Widget _msgAvatar(BuildContext context, Message message, String senderName) {
+  final s = context.read<AppState>();
+  final peer = s.friends.where((u) => u.id == message.senderId).cast<User?>().firstOrNull;
+  final mama = peer?.mamaShow ?? message.sender?.mamaShow;
+  if (mama != null) return MamaAvatar(config: mama, size: 34);
+  return Avatar(name: senderName, url: message.sender?.avatar, size: 34);
 }
 
 Widget _videoBubble(BuildContext context, Message message) {

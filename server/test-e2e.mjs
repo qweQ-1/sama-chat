@@ -835,5 +835,27 @@ const videoMoment = mlist.json?.moments?.find((m) => m.id === mv1.json?.moment?.
 ok('动态列表返回 video 字段', videoMoment?.video === '/uploads/vid_abc123xyz.mp4');
 wsG4B.ws.close();
 
+console.log('\n== 29. mama秀 ==');
+// 保存 mama秀
+const ms1 = await api('PATCH', '/auth/me', {
+  token: A,
+  body: { mamaShow: { skin: 2, hair: 3, hairColor: 5, outfit: 1, outfitColor: 2, acc: 4, bg: 3 } },
+});
+ok('保存 mama秀', ms1.status === 200 && ms1.json?.user?.mamaShow?.hair === 3 && ms1.json?.user?.mamaShow?.acc === 4);
+// 范围钳制（防脏数据）
+const ms2 = await api('PATCH', '/auth/me', {
+  token: A,
+  body: { mamaShow: { skin: 99, hair: -5, hairColor: 100, outfit: 0, outfitColor: 0, acc: 999, bg: 7 } },
+});
+const msv = ms2.json?.user?.mamaShow;
+ok('字段范围钳制', msv?.skin === 4 && msv?.hair === 0 && msv?.hairColor === 5 && msv?.acc === 6 && msv?.bg === 4);
+// 好友视角能看到
+const frA2 = await api('GET', '/friends', { token: B });
+const aUser2 = frA2.json?.friends?.find((f) => f.id === idA);
+ok('好友列表带 mamaShow', aUser2?.mamaShow?.skin === 4);
+// 可清除
+const ms3 = await api('PATCH', '/auth/me', { token: A, body: { mamaShow: null } });
+ok('可清除 mama秀', ms3.json?.user?.mamaShow === null);
+
 console.log(`\n===== RESULT: ${pass} passed, ${fail} failed =====`);
 process.exit(fail === 0 ? 0 : 1);

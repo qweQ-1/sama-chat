@@ -1283,6 +1283,13 @@ class AppState extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------- moments
+  /// 保存 mama秀 虚拟形象。
+  Future<void> saveMamaShow(MamaShowConfig config) async {
+    final u = await api.updateMe(mamaShow: config.toJson());
+    me = u;
+    notifyListeners();
+  }
+
   Future<void> publishMoment(String text,
       List<({Uint8List bytes, String ext})> images,
       {({Uint8List bytes, String ext})? video}) async {

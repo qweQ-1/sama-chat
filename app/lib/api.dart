@@ -193,13 +193,14 @@ class Api {
     return User.fromJson((j['user'] as Map).cast<String, dynamic>());
   }
 
-  Future<User> updateMe({String? displayName, String? avatar, String? phone, String? email, String? code}) async {
+  Future<User> updateMe({String? displayName, String? avatar, String? phone, String? email, String? code, Map<String, dynamic>? mamaShow}) async {
     final j = await _req('PATCH', '/auth/me', body: {
       if (displayName != null) 'displayName': displayName,
       if (avatar != null) 'avatar': avatar,
       if (phone != null) 'phone': phone,
       if (email != null) 'email': email,
       if (code != null) 'code': code,
+      if (mamaShow != null) 'mamaShow': mamaShow,
     });
     return User.fromJson((j['user'] as Map).cast<String, dynamic>());
   }

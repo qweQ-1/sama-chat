@@ -529,6 +529,25 @@ export function registerAuthRoutes(app) {
     if (typeof avatar === 'string') {
       user.avatar = avatar;
     }
+    // mama秀 虚拟形象：字段全部做范围钳制（防脏数据/注入）
+    if (req.body?.mamaShow !== undefined) {
+      const src = req.body.mamaShow;
+      if (src === null) {
+        user.mamaShow = null;
+      } else if (src && typeof src === 'object') {
+        const clamp = (v, max) =>
+          Math.max(0, Math.min(Math.floor(Number(v) || 0), max));
+        user.mamaShow = {
+          skin: clamp(src.skin, 4),
+          hair: clamp(src.hair, 7),
+          hairColor: clamp(src.hairColor, 5),
+          outfit: clamp(src.outfit, 5),
+          outfitColor: clamp(src.outfitColor, 5),
+          acc: clamp(src.acc, 6),
+          bg: clamp(src.bg, 4),
+        };
+      }
+    }
     if (typeof req.body?.phone === 'string' && req.body.phone.trim()) {
       const phone = normalizePhone(req.body.phone);
       if (!PHONE_RE.test(phone)) {

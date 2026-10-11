@@ -13,6 +13,7 @@ import 'diagnostics.dart';
 import 'blocklist.dart';
 import 'accounts.dart';
 import 'announce.dart';
+import 'mama_show.dart';
 import 'sticker_store.dart';
 import 'favorites.dart';
 import '../updater.dart';
@@ -222,6 +223,26 @@ class ProfileTab extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.face_retouching_natural),
+            title: const Text('mama秀'),
+            subtitle: Text(
+              (me?.mamaShow != null) ? '已创建 · 点这里继续捏' : '捏一个你的专属虚拟形象',
+              style: const TextStyle(fontSize: 12),
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (me?.mamaShow != null)
+                  MamaAvatar(config: me!.mamaShow!, size: 36),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MamaShowScreen()),
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.badge_outlined),
             title: const Text('修改昵称'),

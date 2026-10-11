@@ -218,4 +218,53 @@ void main() {
       expect(m2.likeCount, 5);
     });
   });
+
+  group('mama秀 配置（v2.5.0）', () {
+    test('解析完整配置', () {
+      final c = MamaShowConfig.fromJson({
+        'skin': 1, 'hair': 2, 'hairColor': 3,
+        'outfit': 4, 'outfitColor': 5, 'acc': 6, 'bg': 2,
+      });
+      expect(c.skin, 1);
+      expect(c.hair, 2);
+      expect(c.acc, 6);
+      expect(c.bg, 2);
+    });
+
+    test('缺省值', () {
+      final c = MamaShowConfig.fromJson({});
+      expect(c.hair, 1);
+      expect(c.outfitColor, 3);
+      expect(c.bg, 0);
+    });
+
+    test('toJson 往返一致', () {
+      const c = MamaShowConfig(
+          skin: 3, hair: 5, hairColor: 1, outfit: 2, outfitColor: 0, acc: 4, bg: 1);
+      final r = MamaShowConfig.fromJson(c.toJson());
+      expect(r.skin, 3);
+      expect(r.hair, 5);
+      expect(r.acc, 4);
+      expect(r.bg, 1);
+    });
+
+    test('User 内嵌 mamaShow 解析', () {
+      final u = User.fromJson({
+        'id': 'u1',
+        'username': 'x',
+        'displayName': 'X',
+        'mamaShow': {
+          'skin': 2, 'hair': 3, 'hairColor': 0,
+          'outfit': 0, 'outfitColor': 0, 'acc': 0, 'bg': 0,
+        },
+      });
+      expect(u.mamaShow?.hair, 3);
+      expect(u.mamaShow?.skin, 2);
+    });
+
+    test('无 mamaShow 时为 null', () {
+      final u = User.fromJson({'id': 'u2', 'username': 'y', 'displayName': 'Y'});
+      expect(u.mamaShow, null);
+    });
+  });
 }

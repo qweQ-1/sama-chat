@@ -10,6 +10,7 @@ class User {
   final String phone; // 绑定的手机号（仅自己的账号信息里返回）
   final String email; // 绑定的邮箱（仅自己的账号信息里返回）
   final bool canAnnounce; // 是否有发布公告权限（仅自己的账号信息里返回）
+  final MamaShowConfig? mamaShow; // mama秀 虚拟形象（没设置过为 null）
 
   User({
     required this.id,
@@ -20,6 +21,7 @@ class User {
     this.phone = '',
     this.email = '',
     this.canAnnounce = false,
+    this.mamaShow,
   });
 
   /// 显示名：有备注优先用备注
@@ -34,6 +36,10 @@ class User {
         phone: j['phone'] as String? ?? '',
         email: j['email'] as String? ?? '',
         canAnnounce: j['canAnnounce'] as bool? ?? false,
+        mamaShow: j['mamaShow'] != null
+            ? MamaShowConfig.fromJson(
+                (j['mamaShow'] as Map).cast<String, dynamic>())
+            : null,
       );
 
   Map<String, dynamic> toJson() => {
@@ -616,4 +622,65 @@ String formatCallDuration(int ms) {
   final mm = m.toString().padLeft(2, '0');
   final ss = sec.toString().padLeft(2, '0');
   return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
+}
+
+/// mama秀 虚拟形象配置：7 个维度全部是 0..N 的序号，
+/// 客户端实时绘制，服务端只存参数（可随时改，不产生图片文件）。
+class MamaShowConfig {
+  final int skin; // 肤色 0-4
+  final int hair; // 发型 0-7
+  final int hairColor; // 发色 0-5
+  final int outfit; // 衣服款式 0-5
+  final int outfitColor; // 衣服颜色 0-5
+  final int acc; // 配饰 0-6
+  final int bg; // 背景 0-4
+
+  const MamaShowConfig({
+    this.skin = 0,
+    this.hair = 1,
+    this.hairColor = 0,
+    this.outfit = 0,
+    this.outfitColor = 3,
+    this.acc = 0,
+    this.bg = 0,
+  });
+
+  factory MamaShowConfig.fromJson(Map<String, dynamic> j) => MamaShowConfig(
+        skin: (j['skin'] as num?)?.toInt() ?? 0,
+        hair: (j['hair'] as num?)?.toInt() ?? 1,
+        hairColor: (j['hairColor'] as num?)?.toInt() ?? 0,
+        outfit: (j['outfit'] as num?)?.toInt() ?? 0,
+        outfitColor: (j['outfitColor'] as num?)?.toInt() ?? 3,
+        acc: (j['acc'] as num?)?.toInt() ?? 0,
+        bg: (j['bg'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'skin': skin,
+        'hair': hair,
+        'hairColor': hairColor,
+        'outfit': outfit,
+        'outfitColor': outfitColor,
+        'acc': acc,
+        'bg': bg,
+      };
+
+  MamaShowConfig copyWith({
+    int? skin,
+    int? hair,
+    int? hairColor,
+    int? outfit,
+    int? outfitColor,
+    int? acc,
+    int? bg,
+  }) =>
+      MamaShowConfig(
+        skin: skin ?? this.skin,
+        hair: hair ?? this.hair,
+        hairColor: hairColor ?? this.hairColor,
+        outfit: outfit ?? this.outfit,
+        outfitColor: outfitColor ?? this.outfitColor,
+        acc: acc ?? this.acc,
+        bg: bg ?? this.bg,
+      );
 }

@@ -51,6 +51,7 @@ export function publicUser(u) {
     username: u.username,
     displayName: u.displayName,
     avatar: u.avatar ?? null,
+    mamaShow: u.mamaShow ?? null,
     createdAt: u.createdAt,
   };
 }

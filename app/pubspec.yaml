@@ -14,7 +14,7 @@ dependencies:
   provider: ^6.1.2
   shared_preferences: ^2.3.2
   qr_flutter: ^4.1.0
-  mobile_scanner: ^6.0.2
+  mobile_scanner: ^7.4.2 # 扫码加好友（7.x 迁移原生 Vision，避免与 MLKit 人脸检测冲突）
   image_picker: ^1.1.2
   flutter_image_compress: ^2.2.0 # 上传前压缩（WebP 瘦身）
   cached_network_image: ^3.4.1   # 图片磁盘缓存，翻记录秒出

@@ -796,5 +796,44 @@ ok('GET /ice 返回 ICE 配置', iceCfg.status === 200 && (iceCfg.json?.iceServe
 
 wsCallA.ws.close(); wsCallD.ws.close(); wsCallB2.ws.close();
 
+console.log('\n== 28. @全体成员 / 炫圈视频 ==');
+// 新建一个测试群（A 是群主），避免之前测试群的成员状态干扰
+const g4 = await api('POST', '/conversations/group', {
+  token: A, body: { name: '@全体测试群', memberIds: [idB] },
+});
+const g4Id = g4.json?.conversation?.id;
+const wsG4B = await connectWs(B);
+// 群主 A 发 @全体成员 → B 收到 isAll 高亮
+const allMsg = await api('POST', `/conversations/${g4Id}/messages`, {
+  token: A, body: { content: '@全体成员 今晚八点视频会议！' },
+});
+ok('群主发 @全体成员消息成功', allMsg.status === 200);
+const mentionAll = await waitFor(wsG4B.events, 'group:mention', (d) => d.isAll === true);
+ok('群成员收到 @全体 高亮事件', !!mentionAll && mentionAll.conversationId === g4Id);
+// 普通成员 B 发 @全体成员 → 不触发
+const allMsg2 = await api('POST', `/conversations/${g4Id}/messages`, {
+  token: B, body: { content: '@全体成员 大家快来看' },
+});
+ok('普通成员也能发消息（内容不生效）', allMsg2.status === 200);
+await new Promise((r) => setTimeout(r, 400));
+const mentionAll2 = wsG4B.events.filter((e) => e.event === 'group:mention' && e.data?.isAll === true);
+ok('普通成员的 @全体 不再触发高亮', mentionAll2.length === 1);
+
+// 炫圈视频：合法上传路径可发布
+const mv1 = await api('POST', '/moments', {
+  token: A, body: { text: '看我的视频', video: '/uploads/vid_abc123xyz.mp4' },
+});
+ok('炫圈发视频（合法路径）', mv1.status === 200 && mv1.json?.moment?.video === '/uploads/vid_abc123xyz.mp4');
+// 非法路径被拒绝（置空）
+const mv2 = await api('POST', '/moments', {
+  token: A, body: { text: '外链攻击', video: 'https://evil.com/x.mp4' },
+});
+ok('炫圈视频外链被拒（置空）', mv2.status === 200 && mv2.json?.moment?.video === null);
+// 动态列表带出 video 字段
+const mlist = await api('GET', '/moments', { token: B });
+const videoMoment = mlist.json?.moments?.find((m) => m.id === mv1.json?.moment?.id);
+ok('动态列表返回 video 字段', videoMoment?.video === '/uploads/vid_abc123xyz.mp4');
+wsG4B.ws.close();
+
 console.log(`\n===== RESULT: ${pass} passed, ${fail} failed =====`);
 process.exit(fail === 0 ? 0 : 1);

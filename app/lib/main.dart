@@ -7,6 +7,7 @@ import 'screens/desktop.dart';
 import 'screens/home.dart';
 import 'screens/login.dart';
 import 'store.dart';
+import 'tray_support.dart';
 
 void main() {
   runApp(const SamaChatApp());
@@ -50,12 +51,37 @@ class SamaChatApp extends StatelessWidget {
             if (child != null) child,
             // 通话来电/呼出全屏页由这里统一弹出（任何页面都能收到来电）
             const CallOverlayHost(),
+            // Windows 桌面：托盘常驻（点 X 收进托盘，新消息闪动红点）
+            const TrayHost(),
           ],
         ),
         home: const RootGate(),
       ),
     );
   }
+}
+
+/// 桌面托盘初始化宿主（只渲染逻辑，不占空间）。
+class TrayHost extends StatefulWidget {
+  const TrayHost({super.key});
+
+  @override
+  State<TrayHost> createState() => _TrayHostState();
+}
+
+class _TrayHostState extends State<TrayHost> {
+  @override
+  void initState() {
+    super.initState();
+    if (!isDesktopPlatform) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      TraySupport.instance.init(context.read<AppState>());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 /// Decides between login and the main shell.

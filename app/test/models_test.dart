@@ -171,4 +171,51 @@ void main() {
       expect(r.from?.username, 'alice');
     });
   });
+
+  group('Moment 视频字段（v2.4.0）', () {
+    test('解析视频动态', () {
+      final m = Moment.fromJson({
+        'id': 'mo_1',
+        'authorId': 'u_1',
+        'text': '看这个',
+        'images': [],
+        'video': '/uploads/vid_abc123.mp4',
+        'createdAt': 1,
+        'likes': [],
+        'comments': [],
+      });
+      expect(m.video, '/uploads/vid_abc123.mp4');
+      expect(m.images, isEmpty);
+    });
+
+    test('无视频时为 null', () {
+      final m = Moment.fromJson({
+        'id': 'mo_2',
+        'authorId': 'u_1',
+        'text': '纯图',
+        'images': ['/uploads/img_1.jpg'],
+        'createdAt': 1,
+        'likes': [],
+        'comments': [],
+      });
+      expect(m.video, null);
+      expect(m.images.length, 1);
+    });
+
+    test('copyWith 保留 video', () {
+      final m = Moment.fromJson({
+        'id': 'mo_3',
+        'authorId': 'u_1',
+        'text': '',
+        'images': [],
+        'video': '/uploads/vid_x.mp4',
+        'createdAt': 1,
+        'likes': [],
+        'comments': [],
+      });
+      final m2 = m.copyWith(likeCount: 5);
+      expect(m2.video, '/uploads/vid_x.mp4');
+      expect(m2.likeCount, 5);
+    });
+  });
 }

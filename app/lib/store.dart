@@ -789,9 +789,11 @@ class AppState extends ChangeNotifier {
           final from = data['from'] is Map
               ? User.fromJson((data['from'] as Map).cast<String, dynamic>())
               : null;
+          final isAll = data['isAll'] == true;
           if (convId != null && notificationsEnabled && activeChatId != convId) {
             unawaited(AppNotifications.showMessage(
-              title: '$convName · ${from?.displayName ?? '有人'} @了你',
+              title:
+                  '$convName · ${from?.displayName ?? '有人'} ${isAll ? '@全体成员' : '@了你'}',
               body: '${data['content'] ?? ''}',
               id: convId.hashCode & 0x7fffffff,
             ));
@@ -1281,12 +1283,18 @@ class AppState extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------- moments
-  Future<void> publishMoment(String text, List<({Uint8List bytes, String ext})> images) async {
+  Future<void> publishMoment(String text,
+      List<({Uint8List bytes, String ext})> images,
+      {({Uint8List bytes, String ext})? video}) async {
     final urls = <String>[];
     for (final img in images) {
       urls.add(await api.uploadImage(img.bytes, _normExt(img.ext)));
     }
-    await api.postMoment(text, urls);
+    String? videoUrl;
+    if (video != null) {
+      videoUrl = await api.uploadVideo(video.bytes, _normVideoExt(video.ext));
+    }
+    await api.postMoment(text, urls, video: videoUrl);
     await refreshMoments();
   }
 

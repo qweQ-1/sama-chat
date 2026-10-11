@@ -355,6 +355,16 @@ class Api {
         .toList();
   }
 
+  /// 拉取 [before] 之前的 [limit] 条（导出全量记录用，循环调用）。
+  Future<List<Message>> messagesBefore(String conversationId,
+      {required int before, int limit = 200}) async {
+    final j = await _req('GET',
+        '/conversations/$conversationId/messages?limit=$limit&before=$before');
+    return (j['messages'] as List)
+        .map((e) => Message.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
   Future<Message> sendMessage(
     String conversationId, {
     String? text,
@@ -486,8 +496,13 @@ class Api {
     return (j['time'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch;
   }
 
-  Future<Moment> postMoment(String text, List<String> images) async {
-    final j = await _req('POST', '/moments', body: {'text': text, 'images': images});
+  Future<Moment> postMoment(String text, List<String> images,
+      {String? video}) async {
+    final j = await _req('POST', '/moments', body: {
+      'text': text,
+      'images': images,
+      if (video != null) 'video': video,
+    });
     return Moment.fromJson((j['moment'] as Map).cast<String, dynamic>());
   }
 

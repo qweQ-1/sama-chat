@@ -9,6 +9,7 @@ import '../image_utils.dart';
 import '../models.dart';
 import '../store.dart';
 import '../widgets.dart';
+import 'video_viewer.dart';
 
 class MomentsTab extends StatelessWidget {
   const MomentsTab({super.key});
@@ -115,6 +116,11 @@ class MomentCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 10, left: 2, right: 2),
               child: Text(m.text, style: const TextStyle(fontSize: 15, height: 1.35)),
+            ),
+          if (m.video != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _VideoCard(url: m.video!),
             ),
           if (m.images.isNotEmpty)
             Padding(
@@ -260,6 +266,34 @@ class MomentCard extends StatelessWidget {
   }
 }
 
+/// 炫圈视频卡片：黑底播放按钮，点击全屏播放。
+class _VideoCard extends StatelessWidget {
+  final String url;
+  const _VideoCard({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    final full = resolveUrl(context, url);
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => VideoViewerScreen(url: full)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          height: 180,
+          color: Colors.black87,
+          child: const Center(
+            child: Icon(Icons.play_circle_fill, size: 56, color: Colors.white70),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ActionChip extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -350,12 +384,35 @@ class ComposeMomentScreen extends StatefulWidget {
 class _ComposeMomentScreenState extends State<ComposeMomentScreen> {
   final _text = TextEditingController();
   final List<({Uint8List bytes, String ext})> _images = [];
+  ({Uint8List bytes, String ext})? _video;
   bool _busy = false;
 
   @override
   void dispose() {
     _text.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickVideo() async {
+    try {
+      final picker = ImagePicker();
+      final v = await picker.pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(minutes: 3),
+      );
+      if (v == null) return;
+      final len = await v.length();
+      if (len > 40 * 1024 * 1024) {
+        if (mounted) showError(context, '视频太大了（限 40MB，约 1 分钟）');
+        return;
+      }
+      final raw = await v.readAsBytes();
+      final ext = v.name.contains('.') ? v.name.split('.').last.toLowerCase() : 'mp4';
+      final normExt = ['mp4', 'mov', 'm4v', 'webm'].contains(ext) ? ext : 'mp4';
+      setState(() => _video = (bytes: raw, ext: normExt));
+    } catch (e) {
+      if (mounted) showError(context, '选视频失败: $e');
+    }
   }
 
   Future<void> _pick() async {
@@ -376,14 +433,15 @@ class _ComposeMomentScreenState extends State<ComposeMomentScreen> {
   }
 
   Future<void> _publish() async {
-    if (_text.text.trim().isEmpty && _images.isEmpty) {
-      showError(context, '写点文字或选张图片吧');
+    if (_text.text.trim().isEmpty && _images.isEmpty && _video == null) {
+      showError(context, '写点文字、选张图片或视频吧');
       return;
     }
     setState(() => _busy = true);
     final s = context.read<AppState>();
     try {
-      await s.publishMoment(_text.text.trim(), List.of(_images));
+      await s.publishMoment(_text.text.trim(), List.of(_images),
+          video: _video);
       if (mounted) Navigator.pop(context);
     } on ApiException catch (e) {
       if (mounted) showError(context, e.message);
@@ -424,6 +482,42 @@ class _ComposeMomentScreenState extends State<ComposeMomentScreen> {
             ),
           ),
           const SizedBox(height: 8),
+          if (_video != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      width: double.infinity,
+                      height: 140,
+                      color: Colors.black87,
+                      child: const Center(
+                        child: Icon(Icons.videocam,
+                            size: 40, color: Colors.white70),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 6,
+                    top: 6,
+                    child: GestureDetector(
+                      onTap: () => setState(() => _video = null),
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close,
+                            size: 16, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -465,6 +559,26 @@ class _ComposeMomentScreenState extends State<ComposeMomentScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(Icons.add, color: Colors.grey),
+                  ),
+                ),
+              if (_video == null)
+                InkWell(
+                  onTap: _pickVideo,
+                  child: Container(
+                    width: 90,
+                    height: 90,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.play_circle_outline, color: Colors.grey),
+                        SizedBox(height: 4),
+                        Text('视频', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      ],
+                    ),
                   ),
                 ),
             ],

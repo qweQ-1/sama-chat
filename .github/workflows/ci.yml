@@ -119,6 +119,10 @@ jobs:
         shell: bash
         run: cd app && flutter pub get
 
+      - name: Patch plugin MediaFoundation (delayload)
+        shell: bash
+        run: python3 ci/patch-plugin-mf.py
+
       - name: Build Windows (release)
         shell: bash
         run: |

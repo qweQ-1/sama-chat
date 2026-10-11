@@ -836,6 +836,24 @@ export function registerApiRoutes(app, io) {
           });
         }
       }
+      // @全体成员 → 仅群主/管理员有效，广播全群（除自己）
+      if (String(content).includes('@全体成员')) {
+        const isAdmin =
+          conv.ownerId === req.userId ||
+          (conv.adminIds ?? []).includes(req.userId);
+        if (isAdmin) {
+          const payload = {
+            conversationId: conv.id,
+            conversationName: conv.name,
+            from: publicUser(findUserById(req.userId)),
+            content: String(content).slice(0, 150),
+            isAll: true,
+          };
+          for (const mid of conv.memberIds) {
+            if (mid !== req.userId) io?.toUser(mid, 'group:mention', payload);
+          }
+        }
+      }
     }
     return { message };
   });
@@ -911,12 +929,18 @@ export function registerApiRoutes(app, io) {
   });
 
   app.post('/moments', { preHandler: app.auth }, async (req) => {
-    const { text, images } = req.body ?? {};
+    const { text, images, video } = req.body ?? {};
+    // 视频只接受本服务器的上传路径（防止外链注入）
+    const videoUrl =
+      typeof video === 'string' && /^\/uploads\/vid_[A-Za-z0-9_-]{6,48}\.(mp4|mov|m4v|webm)$/.test(video)
+        ? video
+        : null;
     const moment = {
       id: newId('mo'),
       authorId: req.userId,
       text: String(text ?? '').slice(0, 1000),
       images: Array.isArray(images) ? images.slice(0, 9) : [],
+      video: videoUrl,
       createdAt: now(),
       likes: [],
       comments: [],

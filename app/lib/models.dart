@@ -461,6 +461,7 @@ class Moment {
   final User? author;
   final String text;
   final List<String> images;
+  final String? video; // 视频动态（最多一个）
   final int createdAt;
   final int likeCount;
   final bool likedByMe;
@@ -471,6 +472,7 @@ class Moment {
     this.author,
     required this.text,
     required this.images,
+    this.video,
     required this.createdAt,
     required this.likeCount,
     required this.likedByMe,
@@ -485,6 +487,7 @@ class Moment {
         text: j['text'] as String? ?? '',
         images:
             (j['images'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+        video: j['video'] as String?,
         createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
         likeCount: (j['likeCount'] as num?)?.toInt() ??
             ((j['likes'] as List?)?.length ?? 0),
@@ -501,6 +504,7 @@ class Moment {
         author: author,
         text: text,
         images: images,
+        video: video,
         createdAt: createdAt,
         likeCount: likeCount ?? this.likeCount,
         likedByMe: likedByMe ?? this.likedByMe,

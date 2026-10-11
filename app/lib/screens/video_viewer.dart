@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../config.dart';
+
 /// 全屏视频播放器（聊天中点视频卡片进来）。
 class VideoViewerScreen extends StatefulWidget {
   final String url;
@@ -13,10 +15,16 @@ class VideoViewerScreen extends StatefulWidget {
 class _VideoViewerScreenState extends State<VideoViewerScreen> {
   VideoPlayerController? _controller;
   bool _error = false;
+  bool _noMediaFoundation = false;
 
   @override
   void initState() {
     super.initState();
+    // 缺 Media Foundation 的 Windows（Server/N版）：提前拦截，绝不调用播放器
+    if (!mediaFoundationAvailable) {
+      _noMediaFoundation = true;
+      return;
+    }
     _init();
   }
 
@@ -71,13 +79,25 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
         title: const Text('视频', style: TextStyle(fontSize: 16)),
       ),
       body: Center(
-        child: _error
+        child: _noMediaFoundation
             ? const Padding(
                 padding: EdgeInsets.all(24),
-                child: Text('视频加载失败，请检查网络后重试',
-                    style: TextStyle(color: Colors.white70)),
+                child: Text(
+                  '这台电脑缺少 Windows 媒体组件（Media Foundation），无法播放视频。\n\n'
+                  '聊天、图片等功能不受影响。\n'
+                  '如需播放：可在「服务器管理器 → 添加角色和功能」中安装「媒体基础」，'
+                  '或改用手机端观看。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, height: 1.6),
+                ),
               )
-            : c == null
+            : _error
+                ? const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('视频加载失败，请检查网络后重试',
+                        style: TextStyle(color: Colors.white70)),
+                  )
+                : c == null
                 ? const CircularProgressIndicator()
                 : Stack(
                     alignment: Alignment.center,

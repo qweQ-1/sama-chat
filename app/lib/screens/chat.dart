@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 
 import '../api.dart';
+import '../chat_export.dart';
 import '../config.dart';
 import '../image_utils.dart';
 import '../models.dart';
@@ -272,12 +273,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ---------------- @提及 ----------------
   /// 在群里弹出成员列表，选中后把「@昵称 」插入输入框。
+  /// 群主/管理员额外提供「@全体成员」。
   Future<void> _mention() async {
     final s = context.read<AppState>();
     try {
       final (_, members) = await s.api.groupMembers(convId);
       if (!mounted) return;
       final meId = s.me?.id;
+      final meMember =
+          members.where((m) => m.user.id == meId).cast<GroupMember?>().firstOrNull;
+      final iAmAdmin = meMember?.isOwner == true || meMember?.isAdmin == true;
       final pick = await showModalBottomSheet<GroupMember>(
         context: context,
         builder: (ctx) => SafeArea(
@@ -290,6 +295,21 @@ class _ChatScreenState extends State<ChatScreen> {
                     style:
                         TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
               ),
+              if (iAmAdmin)
+                ListTile(
+                  leading: const CircleAvatar(
+                    radius: 19,
+                    backgroundColor: Color(0xFF5B5BD6),
+                    child: Icon(Icons.campaign, size: 20, color: Colors.white),
+                  ),
+                  title: const Text('@全体成员'),
+                  subtitle: const Text('提醒群里所有人（仅群主/管理员）',
+                      style: TextStyle(fontSize: 11)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _insertEmoji('@全体成员 ');
+                  },
+                ),
               for (final m in members)
                 if (m.user.id != meId)
                   ListTile(
@@ -377,6 +397,32 @@ class _ChatScreenState extends State<ChatScreen> {
       await OpenFilex.open(f.path);
     } catch (e) {
       if (mounted) showError(context, '文件打开失败：$e');
+    }
+  }
+
+  /// 导出当前会话聊天记录（HTML）。
+  Future<void> _exportHistory(BuildContext context) async {
+    final s = context.read<AppState>();
+    final conv = _currentConv(s);
+    try {
+      final result = await runExportFlow(context, s, conv);
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('导出完成'),
+          content: SelectableText(result,
+              style: const TextStyle(fontSize: 13)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) showError(context, '导出失败：$e');
     }
   }
 
@@ -645,6 +691,26 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             ),
+          PopupMenuButton<String>(
+            tooltip: '更多',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) {
+              if (v == 'export') _exportHistory(context);
+            },
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(
+                value: 'export',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.ios_share),
+                  title: Text('导出聊天记录'),
+                  subtitle: Text('生成 HTML 文件备份',
+                      style: TextStyle(fontSize: 11)),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: Column(

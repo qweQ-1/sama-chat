@@ -21,11 +21,11 @@ def patch_kts(path):
     s = open(path).read()
     changed = False
 
-    # flutter_webrtc 拉入的 androidx 库要求 compileSdk 35
+    # flutter_webrtc 拉入的 androidx 库要求 compileSdk 36
     if 'compileSdk = ' in s:
         import re
-        s2 = re.sub(r'compileSdk = flutter\.compileSdkVersion', 'compileSdk = 35', s)
-        s2 = re.sub(r'compileSdk = \d+', 'compileSdk = 35', s2)
+        s2 = re.sub(r'compileSdk = flutter\.compileSdkVersion', 'compileSdk = 36', s)
+        s2 = re.sub(r'compileSdk = \d+', 'compileSdk = 36', s2)
         if s2 != s:
             s = s2
             changed = True
@@ -94,11 +94,11 @@ def patch_groovy(path):
     s = open(path).read()
     changed = False
 
-    # flutter_webrtc 拉入的 androidx 库要求 compileSdk 35
+    # flutter_webrtc 拉入的 androidx 库要求 compileSdk 36
     if 'compileSdkVersion' in s:
         import re
-        s2 = re.sub(r'compileSdkVersion flutter\.compileSdkVersion', 'compileSdkVersion 35', s)
-        s2 = re.sub(r'compileSdkVersion \d+', 'compileSdkVersion 35', s2)
+        s2 = re.sub(r'compileSdkVersion flutter\.compileSdkVersion', 'compileSdkVersion 36', s)
+        s2 = re.sub(r'compileSdkVersion \d+', 'compileSdkVersion 36', s2)
         if s2 != s:
             s = s2
             changed = True

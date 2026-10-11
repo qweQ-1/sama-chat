@@ -379,6 +379,31 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// 发起语音通话（仅私聊可用）。
+  Future<void> _startCall(BuildContext context) async {
+    final s = context.read<AppState>();
+    final me = s.me;
+    if (me == null) return;
+    final otherId =
+        widget.conversation.memberIds.firstWhere((m) => m != me.id, orElse: () => '');
+    User? peer;
+    for (final f in s.friends) {
+      if (f.id == otherId) {
+        peer = f;
+        break;
+      }
+    }
+    if (peer == null) {
+      showError(context, '只有好友之间才能通话');
+      return;
+    }
+    try {
+      await s.startCall(peer);
+    } catch (e) {
+      if (mounted) showError(context, '呼叫失败：$e');
+    }
+  }
+
   Future<void> _sendImage() async {
     final s = context.read<AppState>();
     try {
@@ -593,6 +618,12 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
+          if (!widget.conversation.isGroup)
+            IconButton(
+              tooltip: '语音通话',
+              icon: const Icon(Icons.call_outlined),
+              onPressed: () => _startCall(context),
+            ),
           IconButton(
             tooltip: '搜索',
             icon: const Icon(Icons.search),

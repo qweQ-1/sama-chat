@@ -203,6 +203,25 @@ export function registerApiRoutes(app, io) {
     userId: req.userId,
   }));
 
+  // WebRTC ICE 配置：客户端发起/接听通话前拉取（TURN 凭据改了不用重发 App）
+  app.get('/ice', { preHandler: app.auth }, async () => {
+    const iceServers = [
+      { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    ];
+    const turnUrls = String(process.env.TURN_URL || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (turnUrls.length) {
+      iceServers.push({
+        urls: turnUrls,
+        username: process.env.TURN_USER || '',
+        credential: process.env.TURN_PASS || '',
+      });
+    }
+    return { iceServers };
+  });
+
   app.get('/users/resolve/:uid', { preHandler: app.auth }, async (req, reply) => {
     const target = findUserById(req.params.uid);
     if (!target) {

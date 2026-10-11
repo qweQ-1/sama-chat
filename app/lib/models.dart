@@ -567,3 +567,49 @@ String formatShortTime(int ms) {
   }
   return '${dt.month}/${dt.day}';
 }
+
+/// 通话状态（store 内存态，不持久化）。
+class CallInfo {
+  /// 服务端通话 id（呼出初期为空，收到 ringing 回执后回填）。
+  String callId;
+  final String peerId;
+  final String peerName;
+  final String? peerAvatar;
+  final bool video;
+
+  /// outgoing | ringing | incoming | connecting | connected
+  String status;
+  bool muted;
+
+  /// 接通时刻（计时用）
+  int? startedAt;
+
+  /// 来电时暂存对方的 offer（接听时用）。
+  Map<String, dynamic>? pendingOffer;
+
+  /// 呼出时暂存本地 ICE 候选（callId 还没回来，ringing 后补发）。
+  final List<Map<String, dynamic>> pendingOutCandidates = [];
+
+  CallInfo({
+    required this.callId,
+    required this.peerId,
+    required this.peerName,
+    this.peerAvatar,
+    this.video = false,
+    this.status = 'outgoing',
+    this.muted = false,
+    this.startedAt,
+    this.pendingOffer,
+  });
+}
+
+/// 通话计时文案（mm:ss / h:mm:ss）。
+String formatCallDuration(int ms) {
+  final s = ms ~/ 1000;
+  final h = s ~/ 3600;
+  final m = (s % 3600) ~/ 60;
+  final sec = s % 60;
+  final mm = m.toString().padLeft(2, '0');
+  final ss = sec.toString().padLeft(2, '0');
+  return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
+}

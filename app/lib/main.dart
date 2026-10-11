@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'config.dart';
+import 'screens/call.dart';
 import 'screens/desktop.dart';
 import 'screens/home.dart';
 import 'screens/login.dart';
@@ -44,6 +45,13 @@ class SamaChatApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
+        builder: (context, child) => Stack(
+          children: [
+            if (child != null) child,
+            // 通话来电/呼出全屏页由这里统一弹出（任何页面都能收到来电）
+            const CallOverlayHost(),
+          ],
+        ),
         home: const RootGate(),
       ),
     );

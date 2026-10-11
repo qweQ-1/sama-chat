@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../api.dart';
@@ -377,18 +378,21 @@ class ProfileTab extends StatelessWidget {
                     builder: (_) => const PublishAnnouncementScreen()),
               ),
             ),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('关于'),
-            subtitle: const Text('${AppConfig.appName} v2.2.0',
-                style: TextStyle(fontSize: 12)),
-            onTap: () => showAboutDialog(
-              context: context,
-              applicationName: AppConfig.appName,
-              applicationVersion: '2.2.0',
-              children: const [
-                Text('一个轻量的实时聊天应用：私聊、群聊、炫圈、面对面扫码加好友。'),
-              ],
+          FutureBuilder<String>(
+            future: PackageInfo.fromPlatform().then((i) => i.version),
+            builder: (context, snap) => ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('关于'),
+              subtitle: Text('${AppConfig.appName} v${snap.data ?? '…'}',
+                  style: const TextStyle(fontSize: 12)),
+              onTap: () => showAboutDialog(
+                context: context,
+                applicationName: AppConfig.appName,
+                applicationVersion: snap.data ?? '',
+                children: const [
+                  Text('一个轻量的实时聊天应用：私聊、群聊、语音通话、炫圈、面对面扫码加好友。'),
+                ],
+              ),
             ),
           ),
           const Divider(height: 1),

@@ -269,6 +269,14 @@ class Api {
   }
 
   // ---------- conversations ----------
+  /// WebRTC ICE 配置（STUN/TURN），发起/接听通话前拉取。
+  Future<List<Map<String, dynamic>>> iceConfig() async {
+    final j = await _req('GET', '/ice');
+    final list = j['iceServers'] as List?;
+    return list?.map((e) => (e as Map).cast<String, dynamic>()).toList() ??
+        const [];
+  }
+
   Future<List<Conversation>> conversations() async {
     final j = await _req('GET', '/conversations');
     return (j['conversations'] as List)

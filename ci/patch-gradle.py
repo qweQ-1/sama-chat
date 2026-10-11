@@ -21,6 +21,15 @@ def patch_kts(path):
     s = open(path).read()
     changed = False
 
+    # flutter_webrtc 要求 minSdk >= 23
+    if 'minSdk = ' in s and 'minSdk = 23' not in s:
+        import re
+        s2 = re.sub(r'minSdk = flutter\.minSdkVersion', 'minSdk = 23', s)
+        s2 = re.sub(r'minSdk = \d+', 'minSdk = 23', s2)
+        if s2 != s:
+            s = s2
+            changed = True
+
     # --- desugaring ---
     if 'isCoreLibraryDesugaringEnabled' not in s:
         if 'compileOptions {' in s:
@@ -75,6 +84,15 @@ def patch_kts(path):
 def patch_groovy(path):
     s = open(path).read()
     changed = False
+
+    # flutter_webrtc 要求 minSdk >= 23
+    if 'minSdkVersion' in s and 'minSdkVersion 23' not in s:
+        import re
+        s2 = re.sub(r'minSdkVersion flutter\.minSdkVersion', 'minSdkVersion 23', s)
+        s2 = re.sub(r'minSdkVersion \d+', 'minSdkVersion 23', s2)
+        if s2 != s:
+            s = s2
+            changed = True
 
     # --- desugaring ---
     if 'coreLibraryDesugaringEnabled' not in s:

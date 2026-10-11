@@ -27,6 +27,7 @@ plist_set NSLocalNetworkUsageDescription "用于连接你的聊天服务器（�
 /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" "$PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:1 string fetch" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:2 string voip" "$PLIST" 2>/dev/null || true
 echo "--- UIBackgroundModes ---"
 /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$PLIST" 2>/dev/null || true
 

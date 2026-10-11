@@ -712,5 +712,89 @@ aWs2.ws.close();
 
 alice.ws.close(); bob.ws.close(); carol.ws.close();
 
+console.log('\n== 27. 语音通话信令（call:*）==');
+// 注册一个和 A 非好友的用户 D，用于权限测试
+const cDave = await sendCode('13800000004');
+const rD = await api('POST', '/auth/register', {
+  body: { username: 'dave', password: 'secret123', displayName: '戴夫', phone: '13800000004', code: cDave.code },
+});
+const D = rD.json?.token;
+const idD = rD.json?.user?.id;
+// 第 12 节删过 A-B 好友，这里重建（通话要求好友关系）
+const rqB2 = await api('GET', '/friends/requests', { token: B });
+const fromAlice2 = rqB2.json?.incoming?.find((r) => r.fromId === idA);
+if (!fromAlice2) {
+  await api('POST', '/friends/request', { token: A, body: { userId: idB } });
+  const rqB3 = await api('GET', '/friends/requests', { token: B });
+  const req2 = rqB3.json?.incoming?.find((r) => r.fromId === idA);
+  await api('POST', '/friends/respond', { token: B, body: { requestId: req2.id, accept: true } });
+} else {
+  await api('POST', '/friends/respond', { token: B, body: { requestId: fromAlice2.id, accept: true } });
+}
+const wsCallA = await connectWs(A);
+const wsCallB = await connectWs(B);
+const wsCallD = await connectWs(D);
+const sendCall = (ws, event, data) =>
+  ws.send(JSON.stringify({ event, data }));
+
+// 1) 非好友不能呼
+sendCall(wsCallA.ws, 'call:invite', { to: idD, callType: 'audio', offer: { type: 'offer', sdp: 'v=0' } });
+const notFriend = await waitFor(wsCallA.events, 'call:failed', (d) => d.reason === 'not_friend');
+ok('非好友呼叫被拒', !!notFriend);
+
+// 2) 正常呼叫：A → B
+sendCall(wsCallA.ws, 'call:invite', { to: idB, callType: 'audio', offer: { type: 'offer', sdp: 'v=0\r\nFAKE_OFFER' } });
+const inviteEvt = await waitFor(wsCallB.events, 'call:invite');
+ok('B 收到来电邀请(含呼叫人/offer)', inviteEvt && inviteEvt.from?.id === idA && inviteEvt.callId && inviteEvt.offer?.sdp === 'v=0\r\nFAKE_OFFER');
+const ringEvt = await waitFor(wsCallA.events, 'call:ringing', (d) => d.callId === inviteEvt.callId);
+ok('A 收到响铃回执', !!ringEvt && ringEvt.to?.id === idB);
+
+// 3) B 接听 → A 收到 answer
+sendCall(wsCallB.ws, 'call:accept', { callId: inviteEvt.callId, answer: { type: 'answer', sdp: 'v=0\r\nFAKE_ANSWER' } });
+const acceptedEvt = await waitFor(wsCallA.events, 'call:accepted', (d) => d.callId === inviteEvt.callId);
+ok('A 收到接听应答', acceptedEvt && acceptedEvt.answer?.sdp === 'v=0\r\nFAKE_ANSWER');
+
+// 4) ICE candidate 双向交换
+sendCall(wsCallA.ws, 'call:ice', { callId: inviteEvt.callId, candidate: { candidate: 'candidate:1 xyz' } });
+const iceAtB = await waitFor(wsCallB.events, 'call:ice', (d) => d.callId === inviteEvt.callId);
+ok('B 收到 A 的 ICE', iceAtB && iceAtB.candidate?.candidate === 'candidate:1 xyz');
+sendCall(wsCallB.ws, 'call:ice', { callId: inviteEvt.callId, candidate: { candidate: 'candidate:2 abc' } });
+const iceAtA = await waitFor(wsCallA.events, 'call:ice', (d) => d.callId === inviteEvt.callId);
+ok('A 收到 B 的 ICE', iceAtA && iceAtA.candidate?.candidate === 'candidate:2 abc');
+
+// 5) A 挂断 → B 收到 ended
+sendCall(wsCallA.ws, 'call:end', { callId: inviteEvt.callId });
+const endedAtB = await waitFor(wsCallB.events, 'call:ended', (d) => d.callId === inviteEvt.callId);
+ok('B 收到挂断通知', endedAtB && endedAtB.reason === 'hangup');
+
+// 6) 忙线：A 呼 B（接通后），B 反向再呼 A → busy
+sendCall(wsCallA.ws, 'call:invite', { to: idB, callType: 'audio', offer: { type: 'offer', sdp: 'v=0' } });
+const invite2 = await waitFor(wsCallB.events, 'call:invite', (d) => d.from?.id === idA && d.offer?.sdp === 'v=0');
+sendCall(wsCallB.ws, 'call:accept', { callId: invite2.callId, answer: { type: 'answer', sdp: 'v=0' } });
+await waitFor(wsCallA.events, 'call:accepted', (d) => d.callId === invite2.callId);
+// B 在通话中再发起呼叫（目标 A 也在通话中）→ busy
+sendCall(wsCallB.ws, 'call:invite', { to: idA, callType: 'audio', offer: { type: 'offer', sdp: 'v=0' } });
+const busyAtB = await waitFor(wsCallB.events, 'call:failed', (d) => d.reason === 'busy');
+ok('忙线时呼叫失败(busy)', !!busyAtB);
+
+// 7) 掉线自动结束：B 断开 → A 收 peer_offline（双方所有设备都收 ended）
+wsCallB.ws.close();
+const offlineAtA = await waitFor(wsCallA.events, 'call:ended', (d) => d.reason === 'peer_offline');
+ok('对方掉线时通话自动结束', !!offlineAtA);
+
+// 8) 拒接：A 呼 B，B reject → A 收 call:rejected
+const wsCallB2 = await connectWs(B);
+sendCall(wsCallA.ws, 'call:invite', { to: idB, callType: 'audio', offer: { type: 'offer', sdp: 'v=0\r\nR3' } });
+const invite3 = await waitFor(wsCallB2.events, 'call:invite', (d) => d.offer?.sdp === 'v=0\r\nR3');
+sendCall(wsCallB2.ws, 'call:reject', { callId: invite3.callId });
+const rejectedAtA = await waitFor(wsCallA.events, 'call:rejected', (d) => d.callId === invite3.callId);
+ok('拒接方通知呼叫方(rejected)', !!rejectedAtA);
+
+// 9) /ice 接口：默认返回 STUN 列表
+const iceCfg = await api('GET', '/ice', { token: A });
+ok('GET /ice 返回 ICE 配置', iceCfg.status === 200 && (iceCfg.json?.iceServers?.length ?? 0) >= 1);
+
+wsCallA.ws.close(); wsCallD.ws.close(); wsCallB2.ws.close();
+
 console.log(`\n===== RESULT: ${pass} passed, ${fail} failed =====`);
 process.exit(fail === 0 ? 0 : 1);

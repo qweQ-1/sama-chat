@@ -3,12 +3,15 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'call_engine.dart';
 import 'config.dart';
 import 'keepalive.dart';
 import 'models.dart';
@@ -98,6 +101,16 @@ class AppState extends ChangeNotifier {
   final Set<String> onlineUserIds = {};
   final Map<String, Set<String>> typingIn = {};
   bool rtConnected = false;
+
+  // ----------------------------- 通话（WebRTC）-----------------------------
+  /// 当前通话（null = 没有通话）。UI 层监听这个字段弹/关通话页。
+  CallInfo? callState;
+
+  /// 通话结束原因提示（通话页展示一次后清空）。
+  String callFeedback = '';
+
+  CallEngine? _callEngine;
+  Timer? _callRingTimer;
 
   /// Conversation currently open on screen (suppresses unread badge).
   String? activeChatId;
@@ -231,6 +244,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    // 通话中退出登录 → 先挂断
+    if (callState != null) endActiveCall();
     rt.disconnect();
     unawaited(KeepAliveService.stop());
     token = null;
@@ -460,6 +475,160 @@ class AppState extends ChangeNotifier {
     await logout();
   }
 
+  // ------------------------------------------------------------- 通话
+  /// 发起语音通话（仅好友；失败抛异常由 UI 层提示）。
+  Future<void> startCall(User peer, {bool video = false}) async {
+    if (callState != null) return; // 已在通话中
+    callState = CallInfo(
+      callId: '',
+      peerId: peer.id,
+      peerName: peer.displayName,
+      peerAvatar: peer.avatar,
+      video: video,
+      status: 'outgoing',
+    );
+    callFeedback = '';
+    notifyListeners();
+    try {
+      final ice = await api.iceConfig();
+      final engine = CallEngine(
+        onCandidate: (c) => _sendOrQueueCallCandidate(c),
+        onConnectionState: _onCallConnectionState,
+      );
+      _callEngine = engine;
+      await engine.createPeer(ice);
+      await _ensureMicPermission();
+      await engine.openMicrophone();
+      final offer = await engine.makeOffer();
+      rt.send('call:invite', {
+        'to': peer.id,
+        'callType': video ? 'video' : 'audio',
+        'offer': offer,
+      });
+      _startRingTimeout();
+    } catch (e) {
+      callFeedback = e.toString().contains('权限') ? '麦克风权限被拒绝' : '呼叫失败';
+      _finishCall();
+      rethrow; // UI 层 showError
+    }
+  }
+
+  /// 接听来电。
+  Future<void> acceptIncomingCall() async {
+    final c = callState;
+    if (c == null || c.status != 'incoming' || c.pendingOffer == null) return;
+    c.status = 'connecting';
+    notifyListeners();
+    try {
+      final ice = await api.iceConfig();
+      final engine = CallEngine(
+        onCandidate: (cd) => _sendOrQueueCallCandidate(cd),
+        onConnectionState: _onCallConnectionState,
+      );
+      _callEngine = engine;
+      await engine.createPeer(ice);
+      await _ensureMicPermission();
+      final answer = await engine.answerRemote(c.pendingOffer!);
+      rt.send('call:accept', {'callId': c.callId, 'answer': answer});
+    } catch (e) {
+      callFeedback = e.toString().contains('权限') ? '麦克风权限被拒绝' : '接听失败';
+      _finishCall();
+      rethrow;
+    }
+  }
+
+  /// 拒接来电（来电态专用）。
+  void rejectIncomingCall() {
+    final c = callState;
+    if (c == null) return;
+    if (c.status == 'incoming') {
+      rt.send('call:reject', {'callId': c.callId});
+    } else if (c.callId.isNotEmpty) {
+      rt.send('call:end', {'callId': c.callId});
+    }
+    _finishCall();
+  }
+
+  /// 结束当前通话（按钮/超时/断线/退出登录）。
+  void endActiveCall({String reason = 'hangup'}) {
+    final c = callState;
+    if (c == null) return;
+    if (c.callId.isNotEmpty) {
+      rt.send('call:end', {'callId': c.callId, 'reason': reason});
+    }
+    _finishCall();
+  }
+
+  /// 静音/取消静音麦克风。
+  void toggleCallMute() {
+    final c = callState;
+    if (c == null) return;
+    c.muted = !c.muted;
+    _callEngine?.setMuted(c.muted);
+    notifyListeners();
+  }
+
+  /// UI 层展示完 callFeedback 后调用。
+  void clearCallFeedback() {
+    if (callFeedback.isNotEmpty) {
+      callFeedback = '';
+      notifyListeners();
+    }
+  }
+
+  /// 发送或暂存本地 ICE 候选：呼出初期还没拿到 callId（服务端在 ringing 回执里
+  /// 返回），此时先缓存，收到 callId 后补发，避免丢失早期候选。
+  void _sendOrQueueCallCandidate(Map<String, dynamic> cand) {
+    final c = callState;
+    if (c == null) return;
+    if (c.callId.isEmpty) {
+      c.pendingOutCandidates.add(cand);
+      return;
+    }
+    rt.send('call:ice', {'callId': c.callId, 'candidate': cand});
+  }
+
+  void _onCallConnectionState(String s) {
+    final c = callState;
+    if (c == null) return;
+    if (s == 'connected' && c.status != 'connected') {
+      c.status = 'connected';
+      c.startedAt = DateTime.now().millisecondsSinceEpoch;
+      _callRingTimer?.cancel();
+      notifyListeners();
+    } else if ((s == 'failed' || s == 'closed') && c.status == 'connected') {
+      callFeedback = '通话连接中断';
+      endActiveCall(reason: 'connection_lost');
+    }
+  }
+
+  void _startRingTimeout() {
+    _callRingTimer?.cancel();
+    _callRingTimer = Timer(const Duration(seconds: 45), () {
+      final c = callState;
+      if (c != null && c.status != 'connected') {
+        callFeedback = '对方无应答';
+        endActiveCall(reason: 'no_answer');
+      }
+    });
+  }
+
+  Future<void> _ensureMicPermission() async {
+    if (!Platform.isAndroid) return; // iOS 由 getUserMedia 弹窗；桌面无运行时权限
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) throw Exception('麦克风权限被拒绝');
+  }
+
+  void _finishCall() {
+    _callRingTimer?.cancel();
+    _callRingTimer = null;
+    _callEngine?.dispose();
+    _callEngine = null;
+    final had = callState != null;
+    callState = null;
+    if (had) notifyListeners();
+  }
+
   // ------------------------------------------------------------- realtime
   void _connectRealtime() {
     final t = token;
@@ -489,7 +658,13 @@ class AppState extends ChangeNotifier {
       case 'rt:state':
         if (data is Map) {
           rtConnected = data['connected'] as bool? ?? false;
-          if (rtConnected) unawaited(refreshConversations());
+          if (rtConnected) {
+            unawaited(refreshConversations());
+          } else if (callState != null) {
+            // 实时连接断开 → 通话无法维持
+            callFeedback = '网络断开，通话已结束';
+            _finishCall();
+          }
           notifyListeners();
         }
       case 'message:new':
@@ -650,6 +825,108 @@ class AppState extends ChangeNotifier {
             moments = moments.where((m) => m.id != mid).toList();
             notifyListeners();
           }
+        }
+      case 'call:invite':
+        if (data is Map) {
+          final callId = data['callId'] as String? ?? '';
+          if (callState != null) {
+            // 本机已在通话中（多设备/重复邀请）→ 代为拒接
+            rt.send('call:reject', {'callId': callId});
+            return;
+          }
+          final from = data['from'] is Map
+              ? User.fromJson((data['from'] as Map).cast<String, dynamic>())
+              : null;
+          if (from == null) return;
+          callState = CallInfo(
+            callId: callId,
+            peerId: from.id,
+            peerName: from.displayName,
+            peerAvatar: from.avatar,
+            video: data['callType'] == 'video',
+            status: 'incoming',
+            pendingOffer: (data['offer'] as Map?)?.cast<String, dynamic>(),
+          );
+          // 后台时也弹一条系统通知（App 在前台时就只弹通话页）
+          if (!appInForeground && notificationsEnabled) {
+            unawaited(AppNotifications.showMessage(
+              title: '来电',
+              body: '${from.displayName} 邀请你语音通话',
+              id: callId.hashCode & 0x7fffffff,
+            ));
+          }
+          notifyListeners();
+        }
+      case 'call:ringing':
+        if (data is Map &&
+            callState != null &&
+            (data['callId'] as String?) != null &&
+            callState!.status == 'outgoing') {
+          callState!.callId = data['callId'] as String;
+          callState!.status = 'ringing';
+          // 补发呼叫期间产生的本地候选（等 callId）
+          for (final cand in callState!.pendingOutCandidates) {
+            rt.send('call:ice', {'callId': callState!.callId, 'candidate': cand});
+          }
+          callState!.pendingOutCandidates.clear();
+          notifyListeners();
+        }
+      case 'call:accepted':
+        if (data is Map &&
+            callState != null &&
+            (data['callId'] as String?) == callState!.callId) {
+          final answer = data['answer'];
+          if (answer is Map) {
+            // 呼出方：应用对方的 answer
+            callState!.status = 'connecting';
+            notifyListeners();
+            unawaited(
+                _callEngine?.applyRemoteAnswer(answer.cast<String, dynamic>()));
+          } else if (callState!.status == 'incoming') {
+            // 自己的其他设备接听了 → 本机还在响铃，收线
+            _finishCall();
+          }
+        }
+      case 'call:rejected':
+        if (data is Map &&
+            callState != null &&
+            (data['callId'] as String?) == callState!.callId) {
+          callFeedback = '对方拒绝了通话';
+          _finishCall();
+        }
+      case 'call:failed':
+        if (callState != null &&
+            (callState!.status == 'outgoing' ||
+                callState!.status == 'ringing')) {
+          final reason = data is Map ? (data['reason'] as String? ?? '') : '';
+          callFeedback = reason == 'busy'
+              ? '对方忙线中'
+              : reason == 'offline'
+                  ? '对方不在线'
+                  : reason == 'not_friend'
+                      ? '只有好友才能通话'
+                      : '呼叫失败';
+          _finishCall();
+        }
+      case 'call:ice':
+        if (data is Map && callState != null) {
+          final cand = data['candidate'];
+          if (cand is Map) {
+            unawaited(
+                _callEngine?.addRemoteCandidate(cand.cast<String, dynamic>()));
+          }
+        }
+      case 'call:ended':
+        if (data is Map &&
+            callState != null &&
+            (data['callId'] as String?) == callState!.callId) {
+          final reason = data['reason'] as String? ?? '';
+          if (callState!.status == 'outgoing' ||
+              callState!.status == 'ringing') {
+            if (reason == 'no_answer') callFeedback = '对方无应答';
+            if (reason == 'peer_offline') callFeedback = '对方已离线';
+          }
+          _finishCall();
         }
     }
   }

@@ -45,6 +45,12 @@ if [ -f "$MANIFEST" ]; then
     sed -i 's|<manifest\([^>]*\)>|<manifest\1>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>|' "$MANIFEST"
   fi
 
+  # 通话（WebRTC）：前台服务 + 音频模式 + 蓝牙
+  if ! grep -q 'FOREGROUND_SERVICE_MICROPHONE' "$MANIFEST"; then
+    sed -i 's|<manifest\([^>]*\)>|<manifest\1>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>|' "$MANIFEST"
+    sed -i 's|</application>|        <service android:name="com.cloudwebrtc.webrtc.FlutterRTCForegroundService" android:foregroundServiceType="microphone" android:exported="false" />\n    </application>|' "$MANIFEST"
+  fi
+
   echo "--- manifest network config ---"
   grep -o 'android.permission.INTERNET\|POST_NOTIFICATIONS\|ForegroundService' "$MANIFEST" || true
 fi

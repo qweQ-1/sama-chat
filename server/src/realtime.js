@@ -7,6 +7,7 @@ import {
   now,
   publicUser,
   findUserById,
+  areFriends,
   conversationsOf,
   conversationSendBlock,
   save,
@@ -18,6 +19,36 @@ import {
  */
 export function createIo(app) {
   const sockets = new Map(); // userId -> Set<ws>
+
+  // ---- 语音/视频通话信令（纯内存态，不落库）----
+  const activeCalls = new Map(); // callId -> {id, callerId, calleeId, type, state, createdAt, updatedAt}
+  const userCalls = new Map(); // userId -> callId（忙线判断）
+  const CALL_RING_TIMEOUT = 45 * 1000; // 45 秒无应答自动结束
+  const CALL_MAX_DURATION = 6 * 60 * 60 * 1000; // 通话最长 6 小时（兜底）
+
+  function endCall(callId, reason) {
+    const call = activeCalls.get(callId);
+    if (!call) return;
+    activeCalls.delete(callId);
+    if (userCalls.get(call.callerId) === callId) userCalls.delete(call.callerId);
+    if (userCalls.get(call.calleeId) === callId) userCalls.delete(call.calleeId);
+    const payload = { callId, reason };
+    // 广播给双方的所有设备（多端场景：另一台还在响铃的设备靠这个收线）
+    toUser(call.callerId, 'call:ended', payload);
+    toUser(call.calleeId, 'call:ended', payload);
+  }
+
+  // 兜底清理：响铃没人接 / 客户端崩溃没发挂断
+  const callSweeper = setInterval(() => {
+    for (const call of [...activeCalls.values()]) {
+      if (call.state === 'pending' && Date.now() - call.createdAt > CALL_RING_TIMEOUT) {
+        endCall(call.id, 'no_answer');
+      } else if (call.state === 'connected' && Date.now() - call.updatedAt > CALL_MAX_DURATION) {
+        endCall(call.id, 'timeout');
+      }
+    }
+  }, 15 * 1000);
+  callSweeper.unref?.();
 
   function add(userId, ws) {
     if (!sockets.has(userId)) sockets.set(userId, new Set());
@@ -89,6 +120,9 @@ export function createIo(app) {
     socket.on('close', () => {
       remove(userId, socket);
       if (!isOnline(userId)) {
+        // 掉线时若正在通话 → 结束它，让对方收到通知
+        const callId = userCalls.get(userId);
+        if (callId) endCall(callId, 'peer_offline');
         for (const c of conversationsOf(userId)) {
           toConversation(c, 'presence:update', { userId, online: false }, userId);
         }
@@ -158,6 +192,76 @@ export function createIo(app) {
         { conversationId: conv.id, userId },
         userId,
       );
+    }
+
+    // ---- 通话信令：invite / accept / reject / end / ice ----
+    if (event === 'call:invite') {
+      const calleeId = String(data?.to ?? '');
+      const callee = findUserById(calleeId);
+      const fail = (reason) => toUser(userId, 'call:failed', { reason });
+
+      if (!callee || calleeId === userId || !areFriends(userId, calleeId)) return fail('not_friend');
+      if (!isOnline(calleeId)) return fail('offline');
+      if (userCalls.has(userId) || userCalls.has(calleeId)) return fail('busy');
+
+      const call = {
+        id: newId('call'),
+        callerId: userId,
+        calleeId,
+        type: data?.callType === 'video' ? 'video' : 'audio',
+        state: 'pending',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      activeCalls.set(call.id, call);
+      userCalls.set(userId, call.id);
+      userCalls.set(calleeId, call.id);
+
+      toUser(calleeId, 'call:invite', {
+        callId: call.id,
+        from: publicUser(findUserById(userId)),
+        callType: call.type,
+        offer: data?.offer ?? null,
+      });
+      toUser(userId, 'call:ringing', { callId: call.id, to: publicUser(callee) });
+      return;
+    }
+
+    if (event === 'call:accept') {
+      const call = activeCalls.get(String(data?.callId ?? ''));
+      if (!call || call.calleeId !== userId || call.state !== 'pending') return;
+      call.state = 'connected';
+      call.updatedAt = Date.now();
+      toUser(call.callerId, 'call:accepted', {
+        callId: call.id,
+        answer: data?.answer ?? null,
+      });
+      // 也给自己（多设备）：接听者的其他设备靠这个自动收线（无 answer，幂等忽略）
+      toUser(call.calleeId, 'call:accepted', { callId: call.id });
+      return;
+    }
+
+    if (event === 'call:reject') {
+      const call = activeCalls.get(String(data?.callId ?? ''));
+      if (!call || call.calleeId !== userId) return;
+      toUser(call.callerId, 'call:rejected', { callId: call.id });
+      endCall(call.id, 'rejected');
+      return;
+    }
+
+    if (event === 'call:end') {
+      const call = activeCalls.get(String(data?.callId ?? ''));
+      if (!call || (call.callerId !== userId && call.calleeId !== userId)) return;
+      endCall(call.id, String(data?.reason ?? 'hangup'));
+      return;
+    }
+
+    if (event === 'call:ice') {
+      const call = activeCalls.get(String(data?.callId ?? ''));
+      if (!call || (call.callerId !== userId && call.calleeId !== userId)) return;
+      const peer = call.callerId === userId ? call.calleeId : call.callerId;
+      toUser(peer, 'call:ice', { callId: call.id, candidate: data?.candidate ?? null });
+      return;
     }
   }
 

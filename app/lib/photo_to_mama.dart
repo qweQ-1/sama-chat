@@ -108,6 +108,8 @@ Future<MamaShowConfig> generateMamaFromPhoto(String path) async {
         (w * 0.7).round(), (h * 0.95).round());
   }
   final outfitColor = mapOutfit(torso);
+  // 衣服款式识别（条纹/西装/衬衫，识别不了就默认 T恤）
+  final outfit = detectOutfitStyle(px, w, h, bx, by, bw, bh);
 
   // 发型：统计与发色相近的像素分布
   final hair = _hairStyle(px, w, h, bx, by, bw, bh, hairTop);
@@ -116,7 +118,7 @@ Future<MamaShowConfig> generateMamaFromPhoto(String path) async {
     skin: skin,
     hair: hair,
     hairColor: hairColor,
-    outfit: 0,
+    outfit: outfit,
     outfitColor: outfitColor,
     acc: 0,
     bg: 0,
@@ -173,6 +175,97 @@ Color _avgDarkHalf(Uint8List p, int w, int h, int x0, int y0, int x1, int y1) {
     b += samples[i].$4;
   }
   return Color.fromARGB(255, r ~/ take, g ~/ take, b ~/ take);
+}
+
+/// 衣服款式识别（端侧启发式）：
+/// - 横向条纹 → 条纹衫(5)
+/// - 左右同色、中间明显不同（外套+内搭/领带）→ 西装(4)
+/// - 顶部中央浅色领区 → 衬衫(2)
+/// - 其余 → T恤(0)
+int detectOutfitStyle(
+    Uint8List px, int w, int h, double bx, double by, double bw, double bh) {
+  final cx = bx + bw * 0.5;
+  final yTop = (by + bh * 0.5).round().clamp(0, h - 1);
+  final yBot = (by + bh * 2.2).round().clamp(0, h - 1);
+  if (yBot - yTop < 8) return 0; // 没拍到多少衣服
+
+  // ---- 条纹检测：中央竖直条带的逐行亮度周期 ----
+  final x0 = (cx - bw * 0.25).round().clamp(0, w - 1);
+  final x1 = (cx + bw * 0.25).round().clamp(0, w - 1);
+  final lums = <double>[];
+  for (var y = yTop; y <= yBot; y++) {
+    var sum = 0.0;
+    var n = 0;
+    for (var x = x0; x <= x1; x += 2) {
+      final i = (y * w + x) * 4;
+      if (px[i + 3] < 200) continue;
+      sum += _lumOf(px[i], px[i + 1], px[i + 2]);
+      n++;
+    }
+    if (n > 0) lums.add(sum / n);
+  }
+  if (lums.length >= 10) {
+    // 3 点平滑
+    final sm = <double>[];
+    for (var i = 1; i < lums.length - 1; i++) {
+      sm.add((lums[i - 1] + lums[i] + lums[i + 1]) / 3);
+    }
+    final mean = sm.reduce((a, b) => a + b) / sm.length;
+    var crossings = 0;
+    for (var i = 1; i < sm.length; i++) {
+      if ((sm[i - 1] - mean).sign != (sm[i] - mean).sign) crossings++;
+    }
+    final amp = sm.reduce(math.max) - sm.reduce(math.min);
+    if (crossings >= 5 && amp > 35) return 5; // 条纹衫
+  }
+
+  // ---- 西装：左右两列同色、中列明显不同 ----
+  Color band(double fx) {
+    final xa = (bx + bw * fx).round().clamp(0, w - 1);
+    final xb = (xa + math.max(3, (bw * 0.12).round())).clamp(0, w - 1);
+    return _avgRegion(px, w, h, xa, yTop, xb, yBot);
+  }
+
+  final left = band(0.2);
+  final mid = band(0.44);
+  final right = band(0.68);
+  if (left.a > 0 && mid.a > 0 && right.a > 0) {
+    final lr = _colorDist(left, right);
+    final lm = _colorDist(left, mid);
+    if (lr < 45 && lm > 70) return 4; // 西装
+  }
+
+  // ---- 衬衫：衣服顶部中央有浅色领区 ----
+  final collar = _avgRegion(
+    px, w, h,
+    (cx - bw * 0.16).round(), yTop,
+    (cx + bw * 0.16).round(), (yTop + (yBot - yTop) * 0.22).round(),
+  );
+  final base = _avgRegion(
+    px, w, h,
+    (cx - bw * 0.3).round(), (yTop + (yBot - yTop) * 0.45).round(),
+    (cx + bw * 0.3).round(), yBot,
+  );
+  if (collar.a > 0 && base.a > 0) {
+    final collarLum = _lumOf(
+        (collar.r * 255).round(), (collar.g * 255).round(), (collar.b * 255).round());
+    final baseLum = _lumOf(
+        (base.r * 255).round(), (base.g * 255).round(), (base.b * 255).round());
+    final sat = _satOf(
+        (collar.r * 255).round(), (collar.g * 255).round(), (collar.b * 255).round());
+    if (collarLum - baseLum > 45 && sat < 0.3) return 2; // 衬衫
+  }
+
+  return 0; // T恤
+}
+
+double _lumOf(int r, int g, int b) => (r * 299 + g * 587 + b * 114) / 1000;
+
+double _satOf(int r, int g, int b) {
+  final maxV = math.max(r, math.max(g, b));
+  final minV = math.min(r, math.min(g, b));
+  if (maxV <= 0) return 0;
+  return (maxV - minV) / maxV;
 }
 
 /// 与参考色的加权欧氏距离（人眼对绿最敏感，简单加权）。

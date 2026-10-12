@@ -185,13 +185,13 @@ Color _avgDarkHalf(Uint8List p, int w, int h, int x0, int y0, int x1, int y1) {
 int detectOutfitStyle(
     Uint8List px, int w, int h, double bx, double by, double bw, double bh) {
   final cx = bx + bw * 0.5;
-  final yTop = (by + bh * 0.5).round().clamp(0, h - 1);
-  final yBot = (by + bh * 2.2).round().clamp(0, h - 1);
+  final yTop = (by + bh * 0.5).round().clamp(0, h - 1).toInt();
+  final yBot = (by + bh * 2.2).round().clamp(0, h - 1).toInt();
   if (yBot - yTop < 8) return 0; // 没拍到多少衣服
 
   // ---- 条纹检测：中央竖直条带的逐行亮度周期 ----
-  final x0 = (cx - bw * 0.25).round().clamp(0, w - 1);
-  final x1 = (cx + bw * 0.25).round().clamp(0, w - 1);
+  final x0 = (cx - bw * 0.25).round().clamp(0, w - 1).toInt();
+  final x1 = (cx + bw * 0.25).round().clamp(0, w - 1).toInt();
   final lums = <double>[];
   for (var y = yTop; y <= yBot; y++) {
     var sum = 0.0;
@@ -221,8 +221,10 @@ int detectOutfitStyle(
 
   // ---- 西装：左右两列同色、中列明显不同 ----
   Color band(double fx) {
-    final xa = (bx + bw * fx).round().clamp(0, w - 1);
-    final xb = (xa + math.max(3, (bw * 0.12).round())).clamp(0, w - 1);
+    final xa = (bx + bw * fx).round().clamp(0, w - 1).toInt();
+    final gap0 = (bw * 0.12).round();
+    final gap = gap0 < 3 ? 3 : gap0;
+    final xb = (xa + gap).clamp(0, w - 1).toInt();
     return _avgRegion(px, w, h, xa, yTop, xb, yBot);
   }
 

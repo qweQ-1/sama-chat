@@ -52,6 +52,7 @@ export function publicUser(u) {
     displayName: u.displayName,
     avatar: u.avatar ?? null,
     mamaShow: u.mamaShow ?? null,
+    mamaImage: u.mamaImage ?? null,
     createdAt: u.createdAt,
   };
 }

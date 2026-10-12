@@ -558,4 +558,37 @@ class Api {
     }
     return json['url'] as String;
   }
+
+  /// AI 生成 mama秀 形象：上传照片，服务器调 AI 图生图并保存，返回更新后的自己。
+  /// 耗时较长（约 1 分钟），超时放宽到 5 分钟。
+  Future<User> generateMamaImage(Uint8List photoBytes) async {
+    final uri = Uri.parse('$base/mamashow/ai-generate');
+    late http.Response res;
+    try {
+      res = await _client
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'ngrok-skip-browser-warning': '1',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+            body: photoBytes,
+          )
+          .timeout(const Duration(minutes: 5));
+    } catch (e) {
+      throw ApiException(0, '网络中断或超时，请稍后重试');
+    }
+    Map<String, dynamic> json;
+    try {
+      json = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    } catch (_) {
+      json = {};
+    }
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode,
+          json['message'] as String? ?? 'AI 生成失败 (${res.statusCode})');
+    }
+    return User.fromJson((json['user'] as Map).cast<String, dynamic>());
+  }
 }

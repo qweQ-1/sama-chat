@@ -266,5 +266,21 @@ void main() {
       final u = User.fromJson({'id': 'u2', 'username': 'y', 'displayName': 'Y'});
       expect(u.mamaShow, null);
     });
+
+    test('AI 生成形象字段（mamaImage）', () {
+      final u = User.fromJson({
+        'id': 'u3',
+        'username': 'z',
+        'displayName': 'Z',
+        'mamaImage': '/uploads/mama_abc123.png',
+      });
+      expect(u.mamaImage, '/uploads/mama_abc123.png');
+      expect(u.mamaShow, null); // 只生成了 AI 形象，没捏矢量小人
+    });
+
+    test('未生成时 mamaImage 为 null', () {
+      final u = User.fromJson({'id': 'u4', 'username': 'w', 'displayName': 'W'});
+      expect(u.mamaImage, null);
+    });
   });
 }

@@ -227,13 +227,25 @@ class ProfileTab extends StatelessWidget {
             leading: const Icon(Icons.face_retouching_natural),
             title: const Text('mama秀'),
             subtitle: Text(
-              (me?.mamaShow != null) ? '已创建 · 点这里继续捏' : '捏一个你的专属虚拟形象',
+              (me?.mamaImage != null)
+                  ? '✨ AI 专属形象 · 点这里查看/重做'
+                  : (me?.mamaShow != null)
+                      ? '已创建 · 点这里继续捏'
+                      : '捏形象或从照片 AI 生成',
               style: const TextStyle(fontSize: 12),
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (me?.mamaShow != null)
+                if (me?.mamaImage != null)
+                  ClipOval(
+                    child: NetImage(
+                        url: me!.mamaImage!,
+                        width: 36,
+                        height: 36,
+                        fit: BoxFit.cover),
+                  )
+                else if (me?.mamaShow != null)
                   MamaAvatar(config: me!.mamaShow!, size: 36),
                 const Icon(Icons.chevron_right),
               ],

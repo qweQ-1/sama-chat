@@ -53,7 +53,7 @@ const MAX_UPLOAD_BYTES = 6 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 48 * 1024 * 1024;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MEDIA_NAME_RE =
-  /^(?:(img|vid)_[A-Za-z0-9_-]{6,48}\.(jpg|jpeg|png|gif|webp|mp4|mov|m4v|webm|m4a|aac|mp3|wav|ogg|opus)|f_[A-Za-z0-9_-]{6,48}(\.[A-Za-z0-9]{1,10})?)$/;
+  /^(?:(img|vid|mama)_[A-Za-z0-9_-]{6,48}\.(jpg|jpeg|png|gif|webp|mp4|mov|m4v|webm|m4a|aac|mp3|wav|ogg|opus)|f_[A-Za-z0-9_-]{6,48}(\.[A-Za-z0-9]{1,10})?)$/;
 
 export function registerApiRoutes(app, io) {
   // ---------- uploads ----------

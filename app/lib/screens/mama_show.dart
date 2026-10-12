@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../api.dart';
 import '../config.dart';
 import '../models.dart';
 import '../photo_to_mama.dart';
@@ -45,6 +46,59 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
       if (mounted) showError(context, '保存失败：$e');
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// 从照片 AI 生成精致形象（服务器调 AI，约 1 分钟）。
+  Future<void> _aiGenerate() async {
+    try {
+      final picker = ImagePicker();
+      // 不传缩放参数：原图细节更利于 AI 识别
+      final x = await picker.pickImage(source: ImageSource.gallery);
+      if (x == null || !mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('正在生成你的专属形象…'),
+              SizedBox(height: 6),
+              Text('大约需要 1 分钟，请稍等',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+          ),
+        ),
+      );
+
+      try {
+        final bytes = await x.readAsBytes();
+        final s = context.read<AppState>();
+        await s.generateMamaImage(bytes);
+        if (!mounted) return;
+        Navigator.pop(context); // 关进度
+        setState(() {}); // 刷新预览
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✨ 生成完成！已设为你的形象'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } on ApiException catch (e) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        showError(context, e.message);
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        showError(context, '生成失败：$e');
+      }
+    } catch (e) {
+      if (mounted) showError(context, '选照片失败：$e');
     }
   }
 
@@ -97,6 +151,7 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final me = context.watch<AppState>().me;
     return Scaffold(
       appBar: AppBar(
         title: const Text('mama秀'),
@@ -116,7 +171,7 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          // 大预览
+          // 大预览：优先展示 AI 生成的形象
           Center(
             child: Container(
               decoration: BoxDecoration(
@@ -128,22 +183,38 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
                       offset: const Offset(0, 6)),
                 ],
               ),
-              child: MamaAvatar(config: _c, size: 180, ring: false),
+              child: (me?.mamaImage != null)
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: NetImage(
+                        url: me!.mamaImage!,
+                        width: 180,
+                        height: 180,
+                        fit: BoxFit.cover,
+                      ),
+                    )
+                  : MamaAvatar(config: _c, size: 180, ring: false),
             ),
           ),
           const SizedBox(height: 6),
           Center(
-            child: Text('捏一个你的专属形象',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            child: Text(
+                (me?.mamaImage != null)
+                    ? '✨ 你的 AI 专属形象'
+                    : '捏一个你的专属形象',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: (me?.mamaImage != null)
+                        ? const Color(0xFF5B5BD6)
+                        : Colors.grey.shade500)),
           ),
-          // 从照片生成（仅移动端：桌面没有 ML Kit）
           if (!isDesktopPlatform) ...[
             const SizedBox(height: 12),
             Center(
               child: FilledButton.icon(
-                onPressed: _fromPhoto,
+                onPressed: _aiGenerate,
                 icon: const Icon(Icons.auto_awesome, size: 18),
-                label: const Text('从照片生成'),
+                label: Text(me?.mamaImage != null ? '重新生成形象' : 'AI 生成形象'),
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF5B5BD6),
                   padding: const EdgeInsets.symmetric(
@@ -151,9 +222,22 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             Center(
-              child: Text('照片只在手机上分析，不会上传',
+              child: OutlinedButton.icon(
+                onPressed: _fromPhoto,
+                icon: const Icon(Icons.face_retouching_natural, size: 16),
+                label: const Text('快速生成（免费·不传照片）',
+                    style: TextStyle(fontSize: 12.5)),
+                style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Center(
+              child: Text('AI 生成约需 1 分钟；生成后可继续手动微调',
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
             ),
           ],

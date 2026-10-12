@@ -313,12 +313,19 @@ class _ChatScreenState extends State<ChatScreen> {
               for (final m in members)
                 if (m.user.id != meId)
                   ListTile(
-                    leading: (m.user.mamaShow != null)
-                        ? MamaAvatar(config: m.user.mamaShow!, size: 38)
-                        : Avatar(
-                            name: m.user.displayName,
-                            url: m.user.avatar,
-                            size: 38),
+                    leading: (m.user.mamaImage != null)
+                        ? ClipOval(
+                            child: NetImage(
+                                url: m.user.mamaImage!,
+                                width: 38,
+                                height: 38,
+                                fit: BoxFit.cover))
+                        : (m.user.mamaShow != null)
+                            ? MamaAvatar(config: m.user.mamaShow!, size: 38)
+                            : Avatar(
+                                name: m.user.displayName,
+                                url: m.user.avatar,
+                                size: 38),
                     title: Text(m.user.displayName),
                     subtitle: m.isOwner
                         ? const Text('群主', style: TextStyle(fontSize: 11))
@@ -1409,11 +1416,17 @@ class _Bubble extends StatelessWidget {
   }
 }
 
-/// 消息头像：对方设置了 mama秀 就显示虚拟形象（优先好友列表里的最新数据）。
+/// 消息头像：优先 AI 生成的形象 → mama秀矢量形象 → 普通头像。
 Widget _msgAvatar(BuildContext context, Message message, String senderName) {
   final s = context.read<AppState>();
   final peer = s.friends.where((u) => u.id == message.senderId).cast<User?>().firstOrNull;
-  final mama = peer?.mamaShow ?? message.sender?.mamaShow;
+  final u = peer ?? message.sender;
+  if (u?.mamaImage != null) {
+    return ClipOval(
+      child: NetImage(url: u!.mamaImage!, width: 34, height: 34, fit: BoxFit.cover),
+    );
+  }
+  final mama = u?.mamaShow;
   if (mama != null) return MamaAvatar(config: mama, size: 34);
   return Avatar(name: senderName, url: message.sender?.avatar, size: 34);
 }

@@ -1283,9 +1283,18 @@ class AppState extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------- moments
+  /// models.dart 里的 User 模型需要能解析 mamaImage 字段（已在 fromJson 处理）
+
   /// 保存 mama秀 虚拟形象。
   Future<void> saveMamaShow(MamaShowConfig config) async {
     final u = await api.updateMe(mamaShow: config.toJson());
+    me = u;
+    notifyListeners();
+  }
+
+  /// AI 生成 mama秀 形象（照片 → 服务器调 AI → 存服务器）。
+  Future<void> generateMamaImage(Uint8List photo) async {
+    final u = await api.generateMamaImage(photo);
     me = u;
     notifyListeners();
   }

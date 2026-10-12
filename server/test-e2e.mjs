@@ -11,14 +11,15 @@ const ok = (name, cond, extra = '') => {
   else { fail++; console.log(`  ❌ ${name} ${extra}`); }
 };
 
-async function api(method, path, { token, body } = {}) {
+async function api(method, path, { token, body, raw } = {}) {
   const res = await fetch(BASE + path, {
     method,
     headers: {
       ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(raw ? { 'Content-Type': 'application/octet-stream' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: raw ? raw : body ? JSON.stringify(body) : undefined,
   });
   let json = null;
   try { json = await res.json(); } catch {}
@@ -856,6 +857,13 @@ ok('好友列表带 mamaShow', aUser2?.mamaShow?.skin === 4);
 // 可清除
 const ms3 = await api('PATCH', '/auth/me', { token: A, body: { mamaShow: null } });
 ok('可清除 mama秀', ms3.json?.user?.mamaShow === null);
+
+console.log('\n== 30. AI 生成 mama秀 形象 ==');
+// 未配置 AI 时给出明确错误
+const aiNoCfg = await api('POST', '/mamashow/ai-generate', {
+  token: A, raw: Buffer.from('fakejpgdata'),
+});
+ok('未配置 AI 时返回 503', aiNoCfg.status === 503);
 
 console.log(`\n===== RESULT: ${pass} passed, ${fail} failed =====`);
 process.exit(fail === 0 ? 0 : 1);

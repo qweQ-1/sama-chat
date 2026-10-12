@@ -587,4 +587,109 @@ export function registerAuthRoutes(app) {
     await save();
     return { user: selfMe(user) };
   });
+
+  // ---- AI 生成 mama秀 形象（照片 → 图生图 → 存本地 uploads）----
+  app.post('/mamashow/ai-generate', { preHandler: app.auth, bodyLimit: 9 * 1024 * 1024 }, async (req, reply) => {
+    const aiKey = process.env.AI_IMAGE_KEY || '';
+    if (!aiKey) {
+      return reply.code(503).send({
+        error: 'ai_not_configured',
+        message: '服务器还没配置 AI 生图（需设置 AI_IMAGE_KEY）',
+      });
+    }
+    const buf = req.body;
+    if (!Buffer.isBuffer(buf) || buf.length === 0) {
+      return reply.code(400).send({ error: 'empty', message: '照片不能为空' });
+    }
+    if (buf.length > 6 * 1024 * 1024) {
+      return reply.code(400).send({ error: 'too_big', message: '照片太大了（限 6MB）' });
+    }
+
+    const user = findUserById(req.userId);
+    // 每日限额（默认 5 次；失败不扣次数）
+    const limit = Math.max(1, Number(process.env.AI_IMAGE_DAILY_LIMIT || 5));
+    const today = new Date().toISOString().slice(0, 10);
+    user.aiQuota ??= { date: '', count: 0 };
+    if (user.aiQuota.date !== today) user.aiQuota = { date: today, count: 0 };
+    if (user.aiQuota.count >= limit) {
+      return reply.code(429).send({
+        error: 'quota_exceeded',
+        message: `今天已经生成过 ${limit} 次啦，明天再来`,
+      });
+    }
+    user.aiQuota.count++;
+    await save();
+    const refund = async () => {
+      user.aiQuota.count = Math.max(0, user.aiQuota.count - 1);
+      await save();
+    };
+
+    // ---- 调 AI 图生图 ----
+    const aiBase = (process.env.AI_IMAGE_BASE_URL || 'https://api1.weilai.chat').replace(/\/+$/, '');
+    const aiModel = process.env.AI_IMAGE_MODEL || 'gpt-image-2.5';
+    const prompt =
+      process.env.AI_IMAGE_PROMPT ||
+      'Turn this photo into a polished 2D anime-style illustration of a cute character. ' +
+        "Keep the person's hairstyle, hair color, facial features and clothing colors faithful to the photo. " +
+        'Clean flat shading, soft pastel colors, upper body portrait, plain light background, high quality.';
+    let imageBuf = null;
+    try {
+      const fd = new FormData();
+      fd.append('model', aiModel);
+      fd.append('image', new Blob([buf], { type: 'image/jpeg' }), 'photo.jpg');
+      fd.append('prompt', prompt);
+      fd.append('n', '1');
+      fd.append('size', '1024x1024');
+      fd.append('response_format', 'url');
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 240 * 1000);
+      let res;
+      try {
+        res = await fetch(`${aiBase}/v1/images/edits`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${aiKey}` },
+          body: fd,
+          signal: ctl.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      const j = await res.json().catch(() => ({}));
+      const item = j?.data?.[0] ?? {};
+      if (!res.ok || j?.error) {
+        throw new Error(j?.error?.message || `AI 接口返回 ${res.status}`);
+      }
+      if (item.url) {
+        const imgRes = await fetch(String(item.url));
+        if (!imgRes.ok) throw new Error(`下载生成图失败（${imgRes.status}）`);
+        imageBuf = Buffer.from(await imgRes.arrayBuffer());
+      } else if (item.b64_json) {
+        imageBuf = Buffer.from(String(item.b64_json), 'base64');
+      } else {
+        throw new Error('AI 没有返回图片');
+      }
+    } catch (e) {
+      await refund();
+      const msg =
+        e?.name === 'AbortError' ? '生成超时（超过 4 分钟）' : e?.message || String(e);
+      return reply.code(502).send({ error: 'ai_failed', message: `AI 生成失败：${msg}` });
+    }
+
+    // ---- 存到本地 uploads ----
+    try {
+      if (!imageBuf || imageBuf.length === 0 || imageBuf.length > 12 * 1024 * 1024) {
+        throw new Error('图片大小异常');
+      }
+      const uploadDir = process.env.UPLOAD_DIR || path.resolve(process.cwd(), 'uploads');
+      fs.mkdirSync(uploadDir, { recursive: true });
+      const name = `${newId('mama')}.png`;
+      fs.writeFileSync(path.join(uploadDir, name), imageBuf);
+      user.mamaImage = `/uploads/${name}`;
+      await save();
+      return { user: selfMe(user) };
+    } catch (e) {
+      await refund();
+      return reply.code(502).send({ error: 'save_failed', message: `形象保存失败：${e.message}` });
+    }
+  });
 }

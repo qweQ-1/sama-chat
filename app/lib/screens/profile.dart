@@ -23,7 +23,7 @@ class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
 
   /// 全屏查看自己的立绘。
-  void _showMySprite(BuildContext context, String url) {
+  void _showMySprite(BuildContext context, String url, List<String> frames) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -32,7 +32,7 @@ class ProfileTab extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TappableSprite(url: url, frames: _spriteFrames, height: 440),
+            TappableSprite(url: url, frames: frames, height: 440),
             const SizedBox(height: 12),
             TextButton(
               onPressed: () => Navigator.pop(ctx),

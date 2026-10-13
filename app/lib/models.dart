@@ -12,6 +12,7 @@ class User {
   final bool canAnnounce; // 是否有发布公告权限（仅自己的账号信息里返回）
   final MamaShowConfig? mamaShow; // mama秀 虚拟形象（没设置过为 null）
   final String? mamaImage; // AI 生成的 mama秀 形象图（没生成为 null）
+  final Map<String, List<String>> mamaFrames; // AI 动作帧 { wave: [url...] }
 
   User({
     required this.id,
@@ -24,6 +25,7 @@ class User {
     this.canAnnounce = false,
     this.mamaShow,
     this.mamaImage,
+    this.mamaFrames = const {},
   });
 
   /// 显示名：有备注优先用备注

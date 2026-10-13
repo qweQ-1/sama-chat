@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../api.dart';
 import '../config.dart';
+import '../mama_sprite.dart';
 import '../store.dart';
 import '../widgets.dart';
 import 'diagnostics.dart';

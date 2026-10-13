@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../api.dart';
 import '../config.dart';
+import '../mama_sprite.dart';
 import '../models.dart';
 import '../photo_to_mama.dart';
 import '../store.dart';

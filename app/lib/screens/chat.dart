@@ -14,6 +14,7 @@ import '../api.dart';
 import '../chat_export.dart';
 import '../config.dart';
 import '../image_utils.dart';
+import '../mama_sprite.dart';
 import '../models.dart';
 import '../store.dart';
 import '../voice_player.dart';

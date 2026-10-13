@@ -21,8 +21,29 @@ import '../updater.dart';
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
 
-  Future<void> _changeAvatar(BuildContext context) async {
-    final s = context.read<AppState>();
+  /// 全屏查看自己的立绘。
+  void _showMySprite(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MamaSprite(url: url, height: 440),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _changeAvatar(BuildContext context) async {    final s = context.read<AppState>();
     try {
       final x = await ImagePicker().pickImage(
         source: ImageSource.gallery,
@@ -167,10 +188,25 @@ class ProfileTab extends StatelessWidget {
             child: Column(
               children: [
                 GestureDetector(
-                  onTap: () => _changeAvatar(context),
+                  onTap: () => (me?.mamaImage != null)
+                      ? _showMySprite(context, me!.mamaImage!)
+                      : _changeAvatar(context),
                   child: Stack(
                     children: [
-                      Avatar(name: me?.displayName ?? '?', url: me?.avatar, size: 88),
+                      if (me?.mamaImage != null)
+                        // 有 AI 立绘：展示会动的全身形象
+                        SizedBox(
+                          height: 170,
+                          child: MamaSprite(
+                            url: me!.mamaImage!,
+                            height: 170,
+                          ),
+                        )
+                      else
+                        Avatar(
+                            name: me?.displayName ?? '?',
+                            url: me?.avatar,
+                            size: 88),
                       Positioned(
                         right: 0,
                         bottom: 0,
@@ -181,8 +217,12 @@ class ProfileTab extends StatelessWidget {
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 2),
                           ),
-                          child: const Icon(Icons.camera_alt,
-                              size: 13, color: Colors.white),
+                          child: Icon(
+                              me?.mamaImage != null
+                                  ? Icons.fullscreen
+                                  : Icons.camera_alt,
+                              size: 13,
+                              color: Colors.white),
                         ),
                       ),
                     ],

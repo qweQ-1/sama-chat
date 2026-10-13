@@ -629,9 +629,11 @@ export function registerAuthRoutes(app) {
     const aiModel = process.env.AI_IMAGE_MODEL || 'gpt-image-2.5';
     const prompt =
       process.env.AI_IMAGE_PROMPT ||
-      'Turn this photo into a polished 2D anime-style illustration of a cute character. ' +
+      'Full-body 2D anime-style character illustration in a standing pose, from head to toe ' +
+        'including shoes, character centered and fully visible. ' +
         "Keep the person's hairstyle, hair color, facial features and clothing colors faithful to the photo. " +
-        'Clean flat shading, soft pastel colors, upper body portrait, plain light background, high quality.';
+        'Clean flat cel shading, soft pastel colors, high quality. ' +
+        'IMPORTANT: transparent background (alpha channel), character isolated as a cutout sprite, no background scenery.';
     let imageBuf = null;
     try {
       const fd = new FormData();
@@ -639,7 +641,8 @@ export function registerAuthRoutes(app) {
       fd.append('image', new Blob([buf], { type: 'image/jpeg' }), 'photo.jpg');
       fd.append('prompt', prompt);
       fd.append('n', '1');
-      fd.append('size', '1024x1024');
+      fd.append('size', '1024x1536'); // 竖版：容纳全身立绘
+      fd.append('background', 'transparent');
       fd.append('response_format', 'url');
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 240 * 1000);

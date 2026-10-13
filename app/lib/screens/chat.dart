@@ -45,6 +45,9 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _loading = true;
   bool _sendingMedia = false;
 
+  /// 我发消息时自增 → 触发自己的立绘做弹跳动作
+  int _myMoveKey = 0;
+
   String get convId => widget.conversation.id;
 
   /// 已播过入场动画的消息 id（避免列表复用时重复播放）
@@ -105,6 +108,10 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _replyTo = null);
     s.sendTyping(convId, false);
     _sentTypingFalse = true;
+    // 发消息时我的立绘跳一下（有 AI 立绘才触发）
+    if (!widget.conversation.isGroup && s.me?.mamaImage != null) {
+      setState(() => _myMoveKey++);
+    }
     try {
       if (reply != null) {
         await s.sendReply(convId, text, reply);
@@ -760,6 +767,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 showTime: showTime,
                                 isLastMine: i == 0 && m.senderId == me?.id,
                                 othersRead: m.readBy.any((r) => r != me?.id),
+                                myMoveKey: _myMoveKey,
                                 canRecall: m.senderId == me?.id &&
                                     !m.recalled &&
                                     !m.pending &&
@@ -1059,6 +1067,9 @@ class _Bubble extends StatelessWidget {
   final VoidCallback? onOpenFile;
   final VoidCallback? onFavorite;
 
+  /// 我发消息时自增，触发自己立绘的弹跳动作
+  final int myMoveKey;
+
   const _Bubble({
     required this.message,
     required this.myId,
@@ -1073,6 +1084,7 @@ class _Bubble extends StatelessWidget {
     this.onDelete,
     this.onOpenFile,
     this.onFavorite,
+    this.myMoveKey = 0,
   });
 
   @override
@@ -1231,11 +1243,16 @@ class _Bubble extends StatelessWidget {
           child: Row(
             mainAxisAlignment:
                 isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (!isMine && isGroup) ...[
                 _msgAvatar(context, message, senderName),
                 const SizedBox(width: 8),
+              ],
+              // 私聊：对方的消息 → 对方立绘在左
+              if (!isMine && !isGroup && !message.recalled) ...[
+                _msgSprite(context, message, false),
+                const SizedBox(width: 4),
               ],
               Flexible(
                 child: Column(
@@ -1278,7 +1295,14 @@ class _Bubble extends StatelessWidget {
                   ],
                 ),
               ),
-              if (isMine) const SizedBox(width: 4),
+              if (isMine) ...[
+                const SizedBox(width: 4),
+                // 私聊：自己的消息 → 我的立绘在右
+                if (!isGroup && !message.recalled) ...[
+                  _msgSprite(context, message, true),
+                  const SizedBox(width: 4),
+                ],
+              ],
             ],
           ),
         ),
@@ -1429,6 +1453,35 @@ Widget _msgAvatar(BuildContext context, Message message, String senderName) {
   final mama = u?.mamaShow;
   if (mama != null) return MamaAvatar(config: mama, size: 34);
   return Avatar(name: senderName, url: message.sender?.avatar, size: 34);
+}
+
+/// 私聊消息旁的「会动立绘」：AI 全身形象 + 代码驱动的动作。
+/// 自己的消息用我的立绘，对方的消息用对方的立绘。
+/// [myMoveKey] 变化时自己的立绘做弹跳动作。
+Widget _msgSprite(BuildContext context, Message message, bool isMine,
+    {int myMoveKey = 0}) {
+  final s = context.read<AppState>();
+  final url = s.mamaImageOf(message.senderId, isMine: isMine);
+  if (url == null) {
+    // 没有 AI 立绘 → 退回小头像
+    final name = isMine
+        ? (s.me?.displayName ?? '')
+        : (message.sender?.displayName ?? '');
+    return _msgAvatar(context, message, name);
+  }
+  final isNewIncoming = !isMine && serverNowMs() - message.createdAt < 1500;
+  final move = isMine
+      ? (myMoveKey > 0 ? MamaMove.bounce : MamaMove.idle)
+      : (isNewIncoming ? MamaMove.shake : MamaMove.idle);
+  return SizedBox(
+    width: 62,
+    child: MamaSprite(
+      url: url,
+      height: 96,
+      move: move,
+      moveKey: isMine ? myMoveKey : (isNewIncoming ? 1 : 0),
+    ),
+  );
 }
 
 Widget _videoBubble(BuildContext context, Message message) {

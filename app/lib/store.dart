@@ -1299,6 +1299,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 取某人的 AI 立绘地址（没有则 null）。
+  /// 优先用好友列表里的最新数据，退回消息快照。
+  String? mamaImageOf(String userId, {required bool isMine}) {
+    if (isMine && me != null && me!.id == userId) return me!.mamaImage;
+    for (final f in friends) {
+      if (f.id == userId) return f.mamaImage;
+    }
+    return null;
+  }
+
   Future<void> publishMoment(String text,
       List<({Uint8List bytes, String ext})> images,
       {({Uint8List bytes, String ext})? video}) async {

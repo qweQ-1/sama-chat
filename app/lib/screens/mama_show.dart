@@ -49,6 +49,28 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
     }
   }
 
+  /// 全屏查看立绘。
+  void _showBigImage(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MamaSprite(url: url, height: 420),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 从照片 AI 生成精致形象（服务器调 AI，约 1 分钟）。
   Future<void> _aiGenerate() async {
     try {
@@ -184,13 +206,12 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
                 ],
               ),
               child: (me?.mamaImage != null)
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(24),
-                      child: NetImage(
+                  ? SizedBox(
+                      height: 260,
+                      child: MamaSprite(
                         url: me!.mamaImage!,
-                        width: 180,
-                        height: 180,
-                        fit: BoxFit.cover,
+                        height: 260,
+                        onTap: () => _showBigImage(context, me.mamaImage!),
                       ),
                     )
                   : MamaAvatar(config: _c, size: 180, ring: false),

@@ -1,39 +1,49 @@
-/// mama秀 立绘（AI 全身形象）展示组件 + 代码驱动的动作动画。
+/// mama秀 立绘播放器：AI 生成的动作帧序列播放 + 待机循环。
 ///
-/// 动作方案（无需多帧图片，一张透明底立绘即可）：
-/// - idle   呼吸起伏 + 轻微上下浮动（常驻，像活着一样）
-/// - bounce 发消息时向上弹跳一下
-/// - shake  收到消息时轻微左右摇摆
-/// - spin   点击时转个圈（互动彩蛋）
+/// 动作由 AI 生成的多帧图片组成（透明底），本组件负责：
+/// - idle：显示待机立绘（静态/轻微呼吸）
+/// - wave：PingPong 循环播放动作帧（1→2→3→2→1…），自然顺滑
+/// - 播放完指定轮次后自动回到待机
 library;
 
-import 'dart:math' as math;
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import 'widgets.dart';
 
-/// 动作类型。
-enum MamaMove { idle, bounce, shake, spin }
+/// 立绘动作类型。
+enum SpriteAction { idle, wave }
 
-/// 立绘展示：支持动作动画。
-///
-/// [url] 立绘图片地址（相对路径会自动补全服务器前缀）。
-/// [height] 展示高度（宽度按图片比例自适应）。
-/// [move] 当前动作；[moveKey] 变化时重新触发该动作。
+/// mama秀 立绘：静态待机 + AI 动作帧播放。
 class MamaSprite extends StatefulWidget {
+  /// 待机立绘地址。
   final String url;
+
+  /// 动作帧地址列表（PingPong 顺序播放）。
+  final List<String> frames;
+
   final double height;
-  final MamaMove move;
-  final int moveKey;
+
+  /// 当前动作。
+  final SpriteAction action;
+
+  /// 变化时重新触发动作（配合 [action] 使用）。
+  final int actionKey;
+
+  /// 动作播完一轮后自动回到待机（回调通知父组件）。
+  final VoidCallback? onActionDone;
+
   final VoidCallback? onTap;
 
   const MamaSprite({
     super.key,
     required this.url,
+    this.frames = const [],
     this.height = 110,
-    this.move = MamaMove.idle,
-    this.moveKey = 0,
+    this.action = SpriteAction.idle,
+    this.actionKey = 0,
+    this.onActionDone,
     this.onTap,
   });
 
@@ -41,111 +51,143 @@ class MamaSprite extends StatefulWidget {
   State<MamaSprite> createState() => _MamaSpriteState();
 }
 
-class _MamaSpriteState extends State<MamaSprite>
-    with TickerProviderStateMixin {
-  /// 常驻待机动画（呼吸 + 浮动）
-  late final AnimationController _idle;
+class _MamaSpriteState extends State<MamaSprite> {
+  /// 当前显示的动作帧索引（-1 = 待机图）
+  int _frameIdx = -1;
+  Timer? _timer;
 
-  /// 一次性动作动画
-  late final AnimationController _action;
-
-  MamaMove _activeMove = MamaMove.idle;
+  /// PingPong 播放序列：0,1,2,1 循环
+  List<int> _seq = const [];
+  int _seqPos = 0;
+  int _cyclesLeft = 0;
 
   @override
   void initState() {
     super.initState();
-    _idle = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2600),
-    )..repeat(reverse: true);
-    _action = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 620),
-    );
-    _action.addStatusListener((s) {
-      if (s == AnimationStatus.completed && mounted) {
-        setState(() => _activeMove = MamaMove.idle);
-      }
-    });
+    if (widget.action == SpriteAction.wave) _startWave();
   }
 
   @override
   void didUpdateWidget(MamaSprite old) {
     super.didUpdateWidget(old);
-    if (old.moveKey != widget.moveKey && widget.move != MamaMove.idle) {
-      _playAction(widget.move);
+    if (old.actionKey != widget.actionKey) {
+      if (widget.action == SpriteAction.wave) {
+        _startWave();
+      } else {
+        _stopAction();
+      }
     }
   }
 
-  void _playAction(MamaMove move) {
-    setState(() => _activeMove = move);
-    _action.duration = Duration(milliseconds: move == MamaMove.spin ? 900 : 620);
-    _action.forward(from: 0);
+  void _startWave() {
+    final n = widget.frames.length;
+    if (n == 0) return; // 没有动作帧 → 保持待机
+    // PingPong 序列：0→1→…→n-1→…→1，循环播放
+    _seq = n == 1 ? [0] : [...List.generate(n, (i) => i), ...List.generate(n - 2, (i) => n - 2 - i)];
+    _seqPos = 0;
+    _cyclesLeft = 2; // 播放 2 轮
+    setState(() => _frameIdx = _seq[0]);
+    _tick();
+  }
+
+  void _tick() {
+    _timer?.cancel();
+    _timer = Timer(const Duration(milliseconds: 340), () {
+      if (!mounted) return;
+      _seqPos++;
+      if (_seqPos >= _seq.length) {
+        _seqPos = 0;
+        _cyclesLeft--;
+        if (_cyclesLeft <= 0) {
+          _stopAction();
+          widget.onActionDone?.call();
+          return;
+        }
+      }
+      setState(() => _frameIdx = _seq[_seqPos]);
+      _tick();
+    });
+  }
+
+  void _stopAction() {
+    _timer?.cancel();
+    _timer = null;
+    if (mounted) setState(() => _frameIdx = -1);
   }
 
   @override
   void dispose() {
-    _idle.dispose();
-    _action.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final url = resolveUrl(context, widget.url);
+    final showing = _frameIdx >= 0 && _frameIdx < widget.frames.length;
+    final src = showing ? widget.frames[_frameIdx] : widget.url;
 
     return GestureDetector(
-      onTap: widget.onTap ?? () => _playAction(MamaMove.spin),
-      child: AnimatedBuilder(
-        animation: Listenable.merge([_idle, _action]),
-        builder: (context, _) {
-          final t = _action.value;
-          // 待机：上下浮动 ±1.5% + 纵向轻微呼吸缩放
-          final idleFloat = (_idle.value - 0.5) * 2; // -1..1
-          double dy = idleFloat * widget.height * 0.015;
-          double scaleY = 1 + idleFloat * 0.008;
-          double scaleX = 1 - idleFloat * 0.004;
-          double angle = 0;
-
-          switch (_activeMove) {
-            case MamaMove.bounce:
-              // 先向上再回落，用 sin 曲线更自然
-              final p = math.sin(t * math.pi);
-              dy -= p * widget.height * 0.09;
-              scaleY += p * 0.03;
-              scaleX -= p * 0.03;
-            case MamaMove.shake:
-              final p = math.sin(t * math.pi * 3) * (1 - t);
-              angle = p * 0.10;
-            case MamaMove.spin:
-              // 转一圈（绕 Y 轴缩放模拟 3D 旋转）
-              final p = t;
-              scaleX *= (1 - 2 * (p < 0.5 ? p : 1 - p) * 0.85).abs().clamp(0.15, 1.0);
-              dy -= math.sin(t * math.pi) * widget.height * 0.05;
-            case MamaMove.idle:
-              break;
-          }
-
-          return Transform.translate(
-            offset: Offset(0, dy),
-            child: Transform.rotate(
-              angle: angle,
-              child: Transform.scale(
-                scaleX: scaleX,
-                scaleY: scaleY,
-                child: Opacity(
-                  opacity: 0.98,
-                  child: NetImage(
-                    url: widget.url,
-                    height: widget.height,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
+      onTap: widget.onTap,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 120),
+        // 帧切换用交叉淡化，避免闪烁
+        child: NetImage(
+          key: ValueKey(src),
+          url: src,
+          height: widget.height,
+          fit: BoxFit.contain,
+        ),
       ),
+    );
+  }
+}
+
+/// 点击即可挥手的小组件：内部维护「点击 → 播一次挥手 → 回待机」的状态。
+/// 用于「我」页面、mama秀编辑器、全屏查看等场景。
+class TappableSprite extends StatefulWidget {
+  final String url;
+  final List<String> frames;
+  final double height;
+  final VoidCallback? onTap;
+
+  const TappableSprite({
+    super.key,
+    required this.url,
+    this.frames = const [],
+    this.height = 170,
+    this.onTap,
+  });
+
+  @override
+  State<TappableSprite> createState() => _TappableSpriteState();
+}
+
+class _TappableSpriteState extends State<TappableSprite> {
+  int _waveKey = 0;
+  bool _waving = false;
+
+  void _handleTap() {
+    if (widget.frames.isNotEmpty) {
+      setState(() {
+        _waving = true;
+        _waveKey++;
+      });
+    }
+    widget.onTap?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MamaSprite(
+      url: widget.url,
+      frames: widget.frames,
+      height: widget.height,
+      action: _waving ? SpriteAction.wave : SpriteAction.idle,
+      actionKey: _waveKey,
+      onActionDone: () {
+        if (mounted) setState(() => _waving = false);
+      },
+      onTap: _handleTap,
     );
   }
 }

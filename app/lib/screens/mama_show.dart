@@ -51,7 +51,7 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
   }
 
   /// 全屏查看立绘。
-  void _showBigImage(BuildContext context, String url) {
+  void _showBigImage(BuildContext context, String url, List<String> frames) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -60,7 +60,7 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            MamaSprite(url: url, height: 420),
+            TappableSprite(url: url, frames: frames, height: 420),
             const SizedBox(height: 12),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -209,10 +209,12 @@ class _MamaShowScreenState extends State<MamaShowScreen> {
               child: (me?.mamaImage != null)
                   ? SizedBox(
                       height: 260,
-                      child: MamaSprite(
+                      child: TappableSprite(
                         url: me!.mamaImage!,
+                        frames: me.mamaFrames['wave'] ?? const [],
                         height: 260,
-                        onTap: () => _showBigImage(context, me.mamaImage!),
+                        onTap: () =>
+                            _showBigImage(context, me.mamaImage!, me.mamaFrames['wave'] ?? const []),
                       ),
                     )
                   : MamaAvatar(config: _c, size: 180, ring: false),

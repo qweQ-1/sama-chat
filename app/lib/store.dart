@@ -1309,6 +1309,17 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  /// 取某人的动作帧（挥手序列）。
+  List<String> mamaFramesOf(String userId, {required bool isMine}) {
+    if (isMine && me != null && me!.id == userId) {
+      return me!.mamaFrames['wave'] ?? const [];
+    }
+    for (final f in friends) {
+      if (f.id == userId) return f.mamaFrames['wave'] ?? const [];
+    }
+    return const [];
+  }
+
   Future<void> publishMoment(String text,
       List<({Uint8List bytes, String ext})> images,
       {({Uint8List bytes, String ext})? video}) async {

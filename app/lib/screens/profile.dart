@@ -32,7 +32,7 @@ class ProfileTab extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            MamaSprite(url: url, height: 440),
+            TappableSprite(url: url, frames: _spriteFrames, height: 440),
             const SizedBox(height: 12),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -190,7 +190,8 @@ class ProfileTab extends StatelessWidget {
               children: [
                 GestureDetector(
                   onTap: () => (me?.mamaImage != null)
-                      ? _showMySprite(context, me!.mamaImage!)
+                      ? _showMySprite(context, me!.mamaImage!,
+                          me.mamaFrames['wave'] ?? const [])
                       : _changeAvatar(context),
                   child: Stack(
                     children: [
@@ -198,8 +199,9 @@ class ProfileTab extends StatelessWidget {
                         // 有 AI 立绘：展示会动的全身形象
                         SizedBox(
                           height: 170,
-                          child: MamaSprite(
+                          child: TappableSprite(
                             url: me!.mamaImage!,
+                            frames: me.mamaFrames['wave'] ?? const [],
                             height: 170,
                           ),
                         )

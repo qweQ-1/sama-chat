@@ -43,6 +43,11 @@ class User {
                 (j['mamaShow'] as Map).cast<String, dynamic>())
             : null,
         mamaImage: j['mamaImage'] as String?,
+        mamaFrames: (j['mamaFrames'] as Map?)?.map((k, v) => MapEntry(
+              k.toString(),
+              (v as List?)?.map((e) => e.toString()).toList() ?? const <String>[],
+            )) ??
+            const {},
       );
 
   Map<String, dynamic> toJson() => {

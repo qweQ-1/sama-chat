@@ -588,7 +588,8 @@ export function registerAuthRoutes(app) {
     return { user: selfMe(user) };
   });
 
-  // ---- AI 生成 mama秀 形象（照片 → 图生图 → 存本地 uploads）----
+  // ---- AI 生成 mama秀 形象 + 动作帧（照片 → 图生图 → 存本地 uploads）----
+  // 一次调用生成：1 张待机立绘 + N 帧挥手动作（前端 PingPong 播放成动画）
   app.post('/mamashow/ai-generate', { preHandler: app.auth, bodyLimit: 9 * 1024 * 1024 }, async (req, reply) => {
     const aiKey = process.env.AI_IMAGE_KEY || '';
     if (!aiKey) {
@@ -624,24 +625,25 @@ export function registerAuthRoutes(app) {
       await save();
     };
 
-    // ---- 调 AI 图生图 ----
     const aiBase = (process.env.AI_IMAGE_BASE_URL || 'https://api1.weilai.chat').replace(/\/+$/, '');
     const aiModel = process.env.AI_IMAGE_MODEL || 'gpt-image-2.5';
-    const prompt =
-      process.env.AI_IMAGE_PROMPT ||
-      'Full-body 2D anime-style character illustration in a standing pose, from head to toe ' +
-        'including shoes, character centered and fully visible. ' +
-        "Keep the person's hairstyle, hair color, facial features and clothing colors faithful to the photo. " +
-        'Clean flat cel shading, soft pastel colors, high quality. ' +
-        'IMPORTANT: transparent background (alpha channel), character isolated as a cutout sprite, no background scenery.';
-    let imageBuf = null;
-    try {
+    const uploadDir = process.env.UPLOAD_DIR || path.resolve(process.cwd(), 'uploads');
+    fs.mkdirSync(uploadDir, { recursive: true });
+
+    const STYLE = '2D anime-style character illustration, clean flat cel shading, soft pastel colors, high quality';
+    const BASE_RULES =
+      'IMPORTANT: transparent background (alpha channel), character isolated as a cutout sprite, ' +
+      'character centered, full body visible from head to toe including shoes, ' +
+      'exact same framing, scale and art style as the previous image.';
+
+    // 单次图生图调用：返回图片 Buffer
+    async function genImage(imageInput, prompt) {
       const fd = new FormData();
       fd.append('model', aiModel);
-      fd.append('image', new Blob([buf], { type: 'image/jpeg' }), 'photo.jpg');
+      fd.append('image', new Blob([imageInput], { type: 'image/png' }), 'ref.png');
       fd.append('prompt', prompt);
       fd.append('n', '1');
-      fd.append('size', '1024x1536'); // 竖版：容纳全身立绘
+      fd.append('size', '1024x1536');
       fd.append('background', 'transparent');
       fd.append('response_format', 'url');
       const ctl = new AbortController();
@@ -658,41 +660,77 @@ export function registerAuthRoutes(app) {
         clearTimeout(timer);
       }
       const j = await res.json().catch(() => ({}));
-      const item = j?.data?.[0] ?? {};
       if (!res.ok || j?.error) {
         throw new Error(j?.error?.message || `AI 接口返回 ${res.status}`);
       }
+      const item = j?.data?.[0] ?? {};
       if (item.url) {
         const imgRes = await fetch(String(item.url));
         if (!imgRes.ok) throw new Error(`下载生成图失败（${imgRes.status}）`);
-        imageBuf = Buffer.from(await imgRes.arrayBuffer());
-      } else if (item.b64_json) {
-        imageBuf = Buffer.from(String(item.b64_json), 'base64');
-      } else {
-        throw new Error('AI 没有返回图片');
+        return Buffer.from(await imgRes.arrayBuffer());
       }
+      if (item.b64_json) return Buffer.from(String(item.b64_json), 'base64');
+      throw new Error('AI 没有返回图片');
+    }
+
+    function saveImage(imageBuf, prefix) {
+      if (!imageBuf || imageBuf.length === 0 || imageBuf.length > 12 * 1024 * 1024) {
+        throw new Error('图片大小异常');
+      }
+      const name = `${newId(prefix)}.png`;
+      fs.writeFileSync(path.join(uploadDir, name), imageBuf);
+      return `/uploads/${name}`;
+    }
+
+    // 动作帧数量：默认 3 帧（起始 / 中段 / 高幅），PingPong 播放刚好顺滑
+    const frameCount = Math.min(3, Math.max(1, Number(process.env.AI_IMAGE_WAVE_FRAMES || 3)));
+
+    try {
+      // 1) 待机全身立绘
+      const idlePrompt =
+        `Turn this photo into a ${STYLE}. ` +
+        "Keep the person's hairstyle, hair color, facial features and clothing colors faithful to the photo. " +
+        'Pose: standing straight, arms relaxed at sides, facing viewer, neutral friendly expression. ' +
+        BASE_RULES;
+      const idleBuf = await genImage(buf, idlePrompt);
+      const idleUrl = saveImage(idleBuf, 'mama');
+
+      // 2) 挥手动作帧（以立绘为参考，保证角色一致）
+      //    幅度从低到高，配合 PingPong 播放 = 自然的挥手循环
+      const poses = [
+        'left arm slightly raised to waist height, starting to wave',
+        'left arm raised to shoulder height, waving hand open beside the head',
+        'left arm raised high above the head, waving enthusiastically with a big smile',
+      ];
+      const frames = [];
+      let ref = idleBuf;
+      for (let k = 0; k < frameCount; k++) {
+        const pose = poses[Math.min(k, poses.length - 1)];
+        const prompt =
+          `Same character as the reference image — identical face, hairstyle, hair color, clothing and ${STYLE}. ` +
+          `Change ONLY the pose: ${pose}. Keep the rest of the body in the same standing position. ` +
+          BASE_RULES;
+        try {
+          const frameBuf = await genImage(ref, prompt);
+          frames.push(saveImage(frameBuf, 'mama_wave'));
+          ref = frameBuf; // 用上一帧作参考，姿势过渡更连贯
+        } catch (e) {
+          // 单帧失败不阻断整体，有几帧用几帧
+          if (frames.length === 0) throw e;
+          break;
+        }
+      }
+
+      user.mamaImage = idleUrl;
+      user.mamaFrames = { wave: frames };
+      await save();
+      return { user: selfMe(user) };
     } catch (e) {
       await refund();
       const msg =
         e?.name === 'AbortError' ? '生成超时（超过 4 分钟）' : e?.message || String(e);
       return reply.code(502).send({ error: 'ai_failed', message: `AI 生成失败：${msg}` });
     }
-
-    // ---- 存到本地 uploads ----
-    try {
-      if (!imageBuf || imageBuf.length === 0 || imageBuf.length > 12 * 1024 * 1024) {
-        throw new Error('图片大小异常');
-      }
-      const uploadDir = process.env.UPLOAD_DIR || path.resolve(process.cwd(), 'uploads');
-      fs.mkdirSync(uploadDir, { recursive: true });
-      const name = `${newId('mama')}.png`;
-      fs.writeFileSync(path.join(uploadDir, name), imageBuf);
-      user.mamaImage = `/uploads/${name}`;
-      await save();
-      return { user: selfMe(user) };
-    } catch (e) {
-      await refund();
-      return reply.code(502).send({ error: 'save_failed', message: `形象保存失败：${e.message}` });
-    }
   });
+
 }

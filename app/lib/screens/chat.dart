@@ -1456,9 +1456,9 @@ Widget _msgAvatar(BuildContext context, Message message, String senderName) {
   return Avatar(name: senderName, url: message.sender?.avatar, size: 34);
 }
 
-/// 私聊消息旁的「会动立绘」：AI 全身形象 + 代码驱动的动作。
+/// 私聊消息旁的「立绘」：AI 全身形象 + AI 生成的动作帧。
 /// 自己的消息用我的立绘，对方的消息用对方的立绘。
-/// [myMoveKey] 变化时自己的立绘做弹跳动作。
+/// [myMoveKey] 变化时自己的立绘播放挥手动作。
 Widget _msgSprite(BuildContext context, Message message, bool isMine,
     {int myMoveKey = 0}) {
   final s = context.read<AppState>();
@@ -1470,17 +1470,18 @@ Widget _msgSprite(BuildContext context, Message message, bool isMine,
         : (message.sender?.displayName ?? '');
     return _msgAvatar(context, message, name);
   }
+  final frames = s.mamaFramesOf(message.senderId, isMine: isMine);
   final isNewIncoming = !isMine && serverNowMs() - message.createdAt < 1500;
-  final move = isMine
-      ? (myMoveKey > 0 ? MamaMove.bounce : MamaMove.idle)
-      : (isNewIncoming ? MamaMove.shake : MamaMove.idle);
+  // 我发消息 → 我的立绘挥手；对方发新消息 → 对方立绘挥手
+  final shouldWave = (isMine && myMoveKey > 0) || isNewIncoming;
   return SizedBox(
-    width: 62,
+    width: 68,
     child: MamaSprite(
       url: url,
-      height: 96,
-      move: move,
-      moveKey: isMine ? myMoveKey : (isNewIncoming ? 1 : 0),
+      frames: frames,
+      height: 104,
+      action: shouldWave ? SpriteAction.wave : SpriteAction.idle,
+      actionKey: isMine ? myMoveKey : (isNewIncoming ? 1 : 0),
     ),
   );
 }

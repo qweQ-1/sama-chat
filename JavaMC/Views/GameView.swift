@@ -23,6 +23,8 @@ struct GameView: View {
             if let target = url {
                 WebViewContainer(url: target,
                                  reloadToken: reloadToken,
+                                 authUser: model.streamUser,
+                                 authPassword: model.streamPassword,
                                  isLoading: $isLoading,
                                  errorText: $errorText)
                     .ignoresSafeArea()

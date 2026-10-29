@@ -82,10 +82,14 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
+                    TextField("用户名（可选）", text: $model.streamUser)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("密码（可选）", text: $model.streamPassword)
                 } header: {
                     Text("远程串流地址（真 Java 版）")
                 } footer: {
-                    Text("把真正的 Java 版 Minecraft 跑在服务器上（Xvfb + 软件渲染或独显），再用 noVNC / WebRTC 网页串到手机。填了地址后，版本列表里会多出「远程串流」一项，可玩任意原版版本。")
+                    Text("把真正的 Java 版 Minecraft 跑在服务器上（Xvfb + 软件渲染或独显），再用 noVNC / WebRTC 网页串到手机。填了地址后，版本列表里会多出「远程串流」一项，可玩任意原版版本。\n如果页面开了 HTTP 基本认证，把用户名密码填在这里——WKWebView 自己不会弹认证框。")
                 }
 
                 Section {

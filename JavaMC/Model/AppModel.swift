@@ -26,11 +26,20 @@ final class AppModel: ObservableObject {
     @Published var streamURL: String = "" {
         didSet { defaults.set(streamURL, forKey: Keys.streamURL) }
     }
+    /// 串流页面的 HTTP 基本认证账号（服务端开了 auth_basic 时填，WKWebView 不会自己弹框）
+    @Published var streamUser: String = "" {
+        didSet { defaults.set(streamUser, forKey: Keys.streamUser) }
+    }
+    @Published var streamPassword: String = "" {
+        didSet { defaults.set(streamPassword, forKey: Keys.streamPassword) }
+    }
 
     private enum Keys {
         static let directServer = "directServer"
         static let extraQuery = "extraQuery"
         static let streamURL = "streamURL"
+        static let streamUser = "streamUser"
+        static let streamPassword = "streamPassword"
         static let customURLs = "customURLs"
     }
 
@@ -43,6 +52,8 @@ final class AppModel: ObservableObject {
         directServer = defaults.string(forKey: Keys.directServer) ?? ""
         extraQuery = defaults.string(forKey: Keys.extraQuery) ?? ""
         streamURL = defaults.string(forKey: Keys.streamURL) ?? ""
+        streamUser = defaults.string(forKey: Keys.streamUser) ?? ""
+        streamPassword = defaults.string(forKey: Keys.streamPassword) ?? ""
         if let raw = defaults.array(forKey: Keys.customURLs) as? [String] {
             customURLs = raw
         }

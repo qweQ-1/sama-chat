@@ -13,6 +13,8 @@ struct WebViewContainer: UIViewRepresentable {
 
     let url: URL
     let reloadToken: Int
+    var authUser: String = ""
+    var authPassword: String = ""
     @Binding var isLoading: Bool
     @Binding var errorText: String
 
@@ -126,6 +128,27 @@ struct WebViewContainer: UIViewRepresentable {
                 webView.load(URLRequest(url: target))
             }
             return nil
+        }
+
+        /// HTTP 基本认证：WKWebView 不会自己弹用户名密码框，必须在这里给出凭据。
+        /// 远程串流页面（noVNC + nginx auth_basic）就靠这个。
+        func webView(_ webView: WKWebView,
+                     didReceive challenge: URLAuthenticationChallenge,
+                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+            let method = challenge.protectionSpace.authenticationMethod
+            if method == NSURLAuthenticationMethodHTTPBasic || method == NSURLAuthenticationMethodHTTPDigest {
+                let user = parent.authUser.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !user.isEmpty || !parent.authPassword.isEmpty {
+                    let credential = URLCredential(user: user,
+                                                   password: parent.authPassword,
+                                                   persistence: .forSession)
+                    completionHandler(.useCredential, credential)
+                } else {
+                    completionHandler(.performDefaultHandling, nil)
+                }
+                return
+            }
+            completionHandler(.performDefaultHandling, nil)
         }
 
         func webView(_ webView: WKWebView,

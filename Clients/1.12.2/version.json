@@ -1,0 +1,7 @@
+{
+  "title": "Eaglercraft 1.12.2",
+  "minecraft": "1.12.2",
+  "engine": "TeaVM → WebAssembly（社区移植，实验）",
+  "order": 30,
+  "badge": "🟦"
+}

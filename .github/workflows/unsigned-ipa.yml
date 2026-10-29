@@ -42,6 +42,12 @@ jobs:
           unzip -oq "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
 
+      - name: Fetch web-Minecraft clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh Tools/fetch_clients.sh "$PWD/Clients"
+
       - name: Show bundled clients
         shell: bash
         run: |

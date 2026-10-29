@@ -1,0 +1,7 @@
+{
+  "title": "EaglercraftX 1.8",
+  "minecraft": "1.8.9",
+  "engine": "TeaVM → WebAssembly",
+  "order": 10,
+  "badge": "🟩"
+}

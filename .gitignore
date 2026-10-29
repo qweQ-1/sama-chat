@@ -6,3 +6,6 @@ uploads/
 xcuserdata/
 DerivedData/
 JavaMC.xcodeproj/
+Clients/*/index.html
+Clients/*/*.part
+!Clients/*/version.json

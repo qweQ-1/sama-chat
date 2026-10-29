@@ -1,0 +1,8 @@
+.DS_Store
+build/
+dist/
+uploads/
+*.xcuserstate
+xcuserdata/
+DerivedData/
+JavaMC.xcodeproj/

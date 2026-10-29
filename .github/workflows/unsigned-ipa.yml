@@ -1,0 +1,95 @@
+# 打一个不签名的 IPA，供 AltStore / SideStore / Sideloadly / 轻松签 / TrollStore 等工具
+# 用免费 Apple ID 自签安装。
+#
+# 触发：推送到 main 自动构建；也可以在 Actions → Unsigned IPA → Run workflow 手动跑。
+# 产物：uploads/JavaMC-unsigned.ipa（在 run 页面的 Artifacts 里下载）。
+name: Unsigned IPA
+
+on:
+  push:
+    branches: [main, javamc]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unsigned-ipa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Select Xcode 26.6
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.6'
+
+      - name: Install pinned XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip -o "$RUNNER_TEMP/xcodegen.zip"
+          echo "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -oq "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Show bundled clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Clients 目录大小："
+          du -sh Clients 2>/dev/null || echo "(空)"
+          find Clients -maxdepth 2 -type f | head -50
+
+      - name: Generate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodegen --version
+          xcodegen generate
+
+      - name: Archive without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild archive -project JavaMC.xcodeproj -scheme JavaMC \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/JavaMC.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            2>&1 | tail -60
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find build/JavaMC.xcarchive/Products/Applications -maxdepth 1 -name '*.app' -type d -print -quit)
+          echo "app: $APP"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist"
+          rm -rf dist && mkdir -p dist/Payload
+          cp -R "$APP" dist/Payload/
+          mkdir -p uploads
+          (cd dist && zip -qry ../uploads/JavaMC-unsigned.ipa Payload)
+          ls -lh uploads
+          echo "内置客户端清单："
+          ls -1 "$APP/Clients" 2>/dev/null || echo "(bundle 内没有 Clients 目录)"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JavaMC-unsigned-ipa
+          path: uploads/JavaMC-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30

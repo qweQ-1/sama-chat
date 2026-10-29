@@ -23,23 +23,47 @@ hash_of() {
 }
 
 fetch() {
-  url="$1"; out="$2"; label="$3"
+  url="$1"; out="$2"; label="$3"; expect="$4"
   mkdir -p "$(dirname "$out")"
+
   if [ -s "$out" ] && [ "$FORCE" != "1" ]; then
-    echo "== 已存在，跳过 $label ($(hash_of "$out"))"
-    return 0
+    got=$(hash_of "$out")
+    if [ -n "$expect" ] && [ "$got" != "$expect" ]; then
+      echo "== 已存在但哈希不符，重新下载：$out"
+    else
+      echo "== 校验通过，跳过 $label ($got)"
+      return 0
+    fi
   fi
+
   echo "== 下载 $label"
   echo "   $url"
+  rm -f "$out.part"
   curl -fL --retry 4 --retry-delay 3 --retry-all-errors --max-time 1800 \
        --connect-timeout 30 -o "$out.part" "$url"
+  got=$(hash_of "$out.part")
+  echo "   字节数 $(wc -c < "$out.part")  sha256 $got"
+  if [ -n "$expect" ] && [ "$got" != "$expect" ]; then
+    echo "   !! sha256 与钉住的值不一致，拒绝使用（上游文件可能变了）"
+    echo "      期望 $expect"
+    exit 1
+  fi
   mv "$out.part" "$out"
-  echo "   字节数 $(wc -c < "$out")  sha256 $(hash_of "$out")"
 }
 
-fetch "$B/EaglercraftX_1.8_Offline_International.html" "$DST/1.8/index.html"     "EaglercraftX 1.8（EaglercraftX_1.8_Offline_International）"
-fetch "$B/Eaglercraft_1.5_Offline_Download.html"      "$DST/1.5.2/index.html"   "Eaglercraft 1.5.2（Eaglercraft_1.5_Offline_Download）"
-fetch "$J/offline_download/wasm/Eaglercraft_1.12.2_WASM_Offline_Download.html" "$DST/1.12.2/index.html" "Eaglercraft 1.12.2（社区移植，实验）"
+# 哈希是首次构建时记录的（TOFU），钉住它可以保证以后每次出包内容一致；
+# 上游若改动文件，这里会直接失败而不是悄悄换掉客户端。
+fetch "$B/EaglercraftX_1.8_Offline_International.html" "$DST/1.8/index.html" \
+  "EaglercraftX 1.8（EaglercraftX_1.8_Offline_International）" \
+  "e58e079bb2288b46007e12e956c72cdec60fa14476f4b0834469e78f8a9617ad"
+
+fetch "$B/Eaglercraft_1.5_Offline_Download.html" "$DST/1.5.2/index.html" \
+  "Eaglercraft 1.5.2（Eaglercraft_1.5_Offline_Download）" \
+  "b97fb5f541332c28c27766c6c0d6525ddefe215033d3d4fde20fb9686a9970d7"
+
+fetch "$J/offline_download/wasm/Eaglercraft_1.12.2_WASM_Offline_Download.html" "$DST/1.12.2/index.html" \
+  "Eaglercraft 1.12.2（社区移植，实验）" \
+  "26c52ebec03cfca06a010002edcda23a959ee4210715fdbf6117fcb839a353b0"
 
 echo "---- Clients 目录"
 du -sh "$DST" 2>/dev/null || true

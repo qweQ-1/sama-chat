@@ -100,6 +100,20 @@ DISPLAY=:1 LIBGL_ALWAYS_SOFTWARE=1 java -jar .../minecraft.jar
 
 权衡：版本完全自由，帧率取决于服务器（软件渲染大约 10~20 fps 量级，独显+硬件编码能到 60）。
 
+## 五点半、如果你就是想要“真正的” Java 版（那必须开 JIT）
+
+本 App 的定位是**不开 JIT 也能玩 Java 版**，代价是版本受限于社区移植。
+如果你更想要原版任意版本，那绕不开 JIT，现成的路是：
+
+- **Angel Aura Amethyst**（`AngelAuraMC/Amethyst-iOS`）—— PojavLauncher iOS 已停维（仓库 archived，2025-09），
+  Amethyst 是官方指定的继承者，仍在维护。它内置 Azul Zulu JDK + GL4ES/MetalANGLE/MoltenVK，**必须 JIT**。
+- JIT 怎么开（非越狱）：自签时带 `com.apple.security.get-task-allow`（开发签名本来就有），
+  再用 **StikDebug**（`StikDebug/StikDebug`）附加调试器放开进程 —— 每次冷启动重开一次。
+  官方矩阵里只有 TrollStore / 越狱是“完全不用外部设备”的。
+- 免费 Apple ID 自签 7 天到期需重签；TrollStore / 越狱是永久签名。
+
+本 App 不需要上面任何一步。
+
 ## 六、目录结构
 
 ```

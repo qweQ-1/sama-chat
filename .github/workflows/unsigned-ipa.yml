@@ -103,3 +103,20 @@ jobs:
           path: uploads/JavaMC-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish release (手机直接可下载的 IPA)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: javamc-latest
+          name: "JavaMC —— iOS 上的 Java 版 Minecraft（无需 JIT）"
+          body: |
+            未签名 IPA，自签安装即可（AltStore / SideStore / Sideloadly / 轻松签 / TrollStore）。
+
+            内置三个网页版 Minecraft 客户端：1.8.9 / 1.5.2 / 1.12.2，另有自定义客户端与远程串流入口。
+            本 App 不需要开启 JIT：客户端是 AOT 编译成 WebAssembly 的 Java 字节码，由 WebKit 执行。
+
+            每次构建都会覆盖更新这个 release 里的 IPA。
+          files: uploads/JavaMC-unsigned.ipa
+          overwrite_files: true
+          make_latest: false
+          draft: false

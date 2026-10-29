@@ -45,10 +45,14 @@ jobs:
       - name: Show bundled clients
         shell: bash
         run: |
-          set -euo pipefail
-          echo "Clients 目录大小："
-          du -sh Clients 2>/dev/null || echo "(空)"
-          find Clients -maxdepth 2 -type f | head -50
+          set -uo pipefail
+          echo "Clients 目录："
+          if [ -d Clients ]; then
+            du -sh Clients
+            find Clients -maxdepth 2 -type f | head -50
+          else
+            echo "(仓库内无 Clients 目录)"
+          fi
 
       - name: Generate project
         shell: bash
